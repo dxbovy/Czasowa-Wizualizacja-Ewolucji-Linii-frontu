@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CWEL(f) - Wybór bitwy</title>
+    
+    <!-- Nowa ikona SVG z zielonym akcentem -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%2310b981' d='M384 476.1L192 421.2l-148.2 49.4C19.7 478.7 0 460.6 0 435.5V107.5c0-18.7 12.8-35 30.9-39.5l161.1-40.3 192 54.9 148.2-49.4c24.1-8 43.8 10.1 43.8 35.2v328c0 18.7-12.8 35-30.9 39.5L384 476.1zm-96-368.6c-44.2 0-80 35.8-80 80c0 40.8 66.8 126.9 74.4 136.6c2.8 3.6 8.3 3.6 11.2 0c7.6-9.7 74.4-95.8 74.4-136.6c0-44.2-35.8-80-80-80zm0 112a32 32 0 1 1 0-64 32 32 0 1 1 0 64z'/%3E%3C/svg%3E">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              tactical: {
+                950: '#090a0f', 
+                900: '#0f1015', 
+                800: '#181920', 
+                700: '#262730', 
+                600: '#3b3d4a', 
+                accent: '#10b981',      
+                accentHover: '#059669'
+              }
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+  <body class="bg-tactical-950 text-slate-300 font-sans min-h-screen">
+    
+    <!-- Navbar -->
+    <nav class="border-b border-tactical-700 bg-tactical-900 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-50">
+      <a href="index.html" class="flex items-center gap-3 text-slate-400 hover:text-white transition-colors">
+        <i class="fa-solid fa-arrow-left"></i> Powrót do menu
+      </a>
+      <div class="font-bold text-white text-lg flex items-center gap-2">
+        <i class="fa-solid fa-database text-tactical-accent"></i> Baza Danych Konfliktów
+      </div>
+      <div>
+        <a href="edytor.html" class="px-4 py-2 bg-tactical-accent hover:bg-tactical-accentHover text-white rounded-lg text-sm font-bold transition-colors shadow-lg shadow-tactical-accent/20">
+          <i class="fa-solid fa-plus mr-1"></i> Utwórz nową bitwę
+        </a>
+      </div>
+    </nav>
+
+    <main class="max-w-5xl mx-auto px-4 py-8">
+      
+      <!-- Filtry i Sortowanie (Wizualnie gotowe) -->
+      <div class="bg-tactical-900 p-4 rounded-lg border border-tactical-700 mb-6 flex flex-col md:flex-row gap-4 justify-between items-center">
+        <div class="relative w-full md:w-1/2">
+          <i class="fa-solid fa-search absolute left-3 top-3 text-slate-500"></i>
+          <input type="text" placeholder="Szukaj bitwy..." class="w-full bg-tactical-950 border border-tactical-700 rounded-md py-2 pl-10 pr-4 text-white focus:outline-none focus:border-tactical-accent transition-colors">
+        </div>
+        <div class="flex gap-4 w-full md:w-auto">
+          <select class="bg-tactical-950 border border-tactical-700 rounded-md py-2 px-4 text-white focus:outline-none focus:border-tactical-accent w-full transition-colors cursor-pointer">
+            <option>Sortuj: Od najstarszych</option>
+            <option>Sortuj: Od najnowszych</option>
+            <option>Alfabetycznie A-Z</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Lista Bitew (Kontener dla danych z bazy) -->
+      <div id="battles-list" class="space-y-4">
+        <!-- Loader przed załadowaniem danych -->
+        <div class="text-center py-16 text-slate-500">
+          <i class="fa-solid fa-circle-notch fa-spin text-4xl mb-4 text-tactical-accent"></i>
+          <p class="text-lg">Trwa łączenie z dowództwem (Supabase)...</p>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- Biblioteka Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <script>
+      // Twoje poświadczenia z Supabase
+      const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
+      const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
+
+      // Tworzymy instancję klienta
+      const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+      async function fetchBattles() {
+        const container = document.getElementById('battles-list');
+
+        try {
+          // Zgodnie z dokumentacją: odpytujemy tabelę 'battles'[cite: 6]
+          const { data: battles, error } = await db
+            .from('battles')
+            .select('*')
+            .order('start_time', { ascending: true });
+
+          // Obsługa błędów zwróconych przez Supabase (np. błąd RLS)
+          if (error) {
+            console.error('Błąd Supabase:', error);
+            container.innerHTML = `
+              <div class="bg-red-900/20 border border-red-500/50 p-6 rounded-lg">
+                <div class="flex items-center gap-3 text-red-400 mb-2 font-bold text-lg">
+                  <i class="fa-solid fa-triangle-exclamation"></i> Odmowa dostępu lub błąd zapytania
+                </div>
+                <p class="text-slate-300 text-sm">Baza zwróciła komunikat: <span class="font-mono text-red-300">${error.message}</span></p>
+                <p class="text-slate-400 text-xs mt-3">Hint: Jeśli to błąd związany z "Row Level Security", wejdź w SQL Editor w Supabase i wykonaj polecenie: <code>ALTER TABLE battles DISABLE ROW LEVEL SECURITY;</code></p>
+              </div>`;
+            return;
+          }
+
+          // Obsługa braku rekordów
+          if (!battles || battles.length === 0) {
+            container.innerHTML = `
+              <div class="bg-tactical-900 border border-tactical-700 text-slate-400 p-12 rounded-lg text-center shadow-lg">
+                <div class="w-20 h-20 bg-tactical-800 rounded-full flex items-center justify-center mx-auto mb-4 border border-tactical-700">
+                  <i class="fa-solid fa-satellite-dish text-3xl text-tactical-600"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">Brak danych operacyjnych</h3>
+                <p>W bazie danych nie znaleziono żadnych bitew.</p>
+                <a href="edytor.html" class="inline-block mt-6 px-6 py-2 bg-tactical-accent/10 border border-tactical-accent text-tactical-accent hover:bg-tactical-accent hover:text-white rounded transition-colors">
+                  Utwórz pierwszy scenariusz
+                </a>
+              </div>`;
+            return;
+          }
+
+          // Formatowanie daty do polskiego formatu DD.MM.YYYY
+          const formatDate = (dateStr) => {
+            if (!dateStr) return 'Brak daty';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('pl-PL');
+          };
+
+          // Renderowanie listy bitew
+          container.innerHTML = battles.map(battle => `
+            <div class="bg-tactical-900 border border-tactical-700 rounded-lg p-5 hover:border-tactical-accent transition-colors flex flex-col md:flex-row justify-between items-center gap-4 group">
+              <div class="flex-1">
+                <div class="flex items-center gap-3 mb-1">
+                  <span class="bg-tactical-800 text-tactical-accent text-xs px-2 py-1 rounded font-bold border border-tactical-700 shadow-sm uppercase tracking-wider">Scenariusz</span>
+                  <h3 class="text-xl font-bold text-white group-hover:text-tactical-accent transition-colors">${battle.name}</h3>
+                </div>
+                <p class="text-sm text-slate-400 line-clamp-2 mb-3 mt-2">${battle.description || 'Brak opisu taktycznego.'}</p>
+                <div class="text-xs text-slate-500 flex items-center gap-4">
+                  <span class="flex items-center gap-1.5"><i class="fa-regular fa-clock text-tactical-600"></i> Od: <span class="text-slate-300">${formatDate(battle.start_time)}</span></span>
+                  <span class="flex items-center gap-1.5"><i class="fa-solid fa-flag-checkered text-tactical-600"></i> Do: <span class="text-slate-300">${formatDate(battle.end_time)}</span></span>
+                </div>
+              </div>
+              
+              <div class="flex flex-col sm:flex-row gap-3 w-full md:w-auto shrink-0 mt-4 md:mt-0">
+                <a href="edytor.html?battle_id=${battle.id}" class="flex-1 md:flex-none text-center px-4 py-2.5 bg-tactical-800 border border-tactical-700 hover:bg-tactical-700 hover:text-white rounded-lg text-slate-300 text-sm font-medium transition-all flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-pen"></i> Edytuj
+                </a>
+                <a href="wizualizacja.html?battle_id=${battle.id}" class="flex-1 md:flex-none text-center px-6 py-2.5 bg-tactical-accent hover:bg-tactical-accentHover text-white rounded-lg text-sm font-bold shadow-[0_0_15px_rgba(16,185,129,0.15)] hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2">
+                  <i class="fa-solid fa-play"></i> Wizualizacja
+                </a>
+              </div>
+            </div>
+          `).join('');
+
+        } catch (err) {
+          console.error('Krytyczny błąd połączenia:', err);
+          container.innerHTML = `<div class="bg-red-900/20 border border-red-500/50 text-red-400 p-6 rounded-lg text-center"><i class="fa-solid fa-bug text-2xl mb-2"></i><br/>Błąd skryptu JavaScript: ${err.message}</div>`;
+        }
+      }
+
+      // Odpal funkcję po załadowaniu drzewa DOM
+      document.addEventListener('DOMContentLoaded', fetchBattles);
+    </script>
+  </body>
+</html>

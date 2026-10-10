@@ -1,5 +1,6 @@
 {
   "dependencies": {
+<<<<<<< HEAD
     "@geoman-io/leaflet-geoman-free": "^2.20.2",
     "@turf/turf": "^7.4.0",
     "leaflet": "^1.9.4",
@@ -18,5 +19,9 @@
   "description": "",
   "devDependencies": {
     "vite": "^5.4.21"
+=======
+    "@tailwindcss/cli": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+>>>>>>> b1646663c81fef9c51bcea3c9795b0dbd98714a5
   }
 }

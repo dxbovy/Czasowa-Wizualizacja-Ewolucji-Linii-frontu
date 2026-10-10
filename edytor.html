@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8">
+    <title>Edytor Scenariusza - CWEL(f)</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = { theme: { extend: { colors: { tactical: { 900: '#0f172a', 800: '#1e293b', 700: '#334155', accent: '#10b981' } } } } }
+    </script>
+  </head>
+  <body class="bg-tactical-900 text-slate-300 font-sans h-screen flex flex-col overflow-hidden">
+    
+    <!-- Topbar Edytora -->
+    <header class="h-14 bg-tactical-900 border-b border-tactical-700 flex justify-between items-center px-4 shrink-0 z-30">
+      <div class="flex items-center gap-4">
+        <a href="bitwy.html" class="text-slate-400 hover:text-white transition-colors" title="Zakończ edycję"><i class="fa-solid fa-xmark text-xl"></i></a>
+        <div>
+          <h1 class="text-white font-bold flex items-center gap-2">
+            Bitwa nad Bzurą <i class="fa-solid fa-pen text-xs text-slate-500 cursor-pointer hover:text-tactical-accent"></i>
+          </h1>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <div class="text-xs text-slate-400 mr-2">Ostatni zapis: 2 min temu</div>
+        <button class="px-4 py-1.5 bg-tactical-800 hover:bg-tactical-700 border border-tactical-700 rounded text-sm text-white font-medium transition-colors">
+          Anuluj zmiany
+        </button>
+        <button class="px-4 py-1.5 bg-tactical-accent hover:bg-emerald-600 rounded text-sm text-white font-bold transition-colors shadow-lg shadow-tactical-accent/20">
+          <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Zapisz do bazy
+        </button>
+      </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden relative">
+      
+      <!-- Toolbox Edytora (Pływający po lewej na mapie) -->
+      <div class="absolute left-4 top-4 z-20 flex flex-col gap-2 bg-tactical-900/90 backdrop-blur p-2 rounded-xl border border-tactical-700 shadow-xl">
+        <button class="w-10 h-10 rounded-lg bg-tactical-accent text-white flex items-center justify-center hover:bg-emerald-600 tooltip" title="Dodaj jednostkę (Kropkę)">
+          <i class="fa-solid fa-plus"></i>
+        </button>
+        <div class="w-full h-px bg-tactical-700 my-1"></div>
+        <button class="w-10 h-10 rounded-lg bg-tactical-800 text-slate-300 hover:bg-tactical-700 hover:text-white flex items-center justify-center" title="Narysuj wektor ruchu">
+          <i class="fa-solid fa-arrow-trend-up"></i>
+        </button>
+        <button class="w-10 h-10 rounded-lg bg-tactical-800 text-slate-300 hover:bg-tactical-700 hover:text-white flex items-center justify-center" title="Ustaw pozycję startową">
+          <i class="fa-solid fa-location-crosshairs"></i>
+        </button>
+        <div class="w-full h-px bg-tactical-700 my-1"></div>
+        <button class="w-10 h-10 rounded-lg bg-red-900/50 text-red-400 hover:bg-red-800 hover:text-white flex items-center justify-center" title="Usuń wybrany element">
+          <i class="fa-solid fa-trash-can"></i>
+        </button>
+      </div>
+
+      <!-- Obszar Mapy -->
+      <main class="flex-1 bg-[#1a202c] relative flex items-center justify-center cursor-crosshair">
+        <div class="absolute inset-0 opacity-10" style="background-image: linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px); background-size: 50px 50px;"></div>
+        <div class="text-slate-600 text-xl font-bold z-10 select-none">Obszar roboczy edytora mapy</div>
+      </main>
+
+      <!-- Prawy Panel: Właściwości (Forms) -->
+      <aside class="w-96 bg-tactical-900 border-l border-tactical-700 flex flex-col shrink-0 overflow-y-auto z-10 shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.3)]">
+        
+        <div class="p-4 bg-tactical-800/50 border-b border-tactical-700">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400">Właściwości obiektu</h2>
+        </div>
+
+        <!-- Formularz edycji jednostki ('units' table) -->
+        <div class="p-5 space-y-4">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">ID Jednostki (Baza)</label>
+            <input type="text" disabled value="unit-001" class="w-full bg-tactical-900/50 border border-tactical-800 rounded px-3 py-2 text-sm text-slate-500 cursor-not-allowed">
+          </div>
+          
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Nazwa jednostki <span class="text-red-400">*</span></label>
+            <input type="text" value="14 Pułk Piechoty" class="w-full bg-tactical-800 border border-tactical-700 focus:border-tactical-accent rounded px-3 py-2 text-sm text-white outline-none">
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Strona konfliktu</label>
+              <select class="w-full bg-tactical-800 border border-tactical-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-tactical-accent">
+                <option value="blue" selected>Niebiescy (Polska)</option>
+                <option value="red">Czerwoni (Wróg)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Typ (Symbol NATO)</label>
+              <select class="w-full bg-tactical-800 border border-tactical-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-tactical-accent">
+                <option value="infantry" selected>Piechota</option>
+                <option value="armor">Czołgi</option>
+                <option value="artillery">Artyleria</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Siła (Liczebność)</label>
+            <input type="number" value="2400" class="w-full bg-tactical-800 border border-tactical-700 focus:border-tactical-accent rounded px-3 py-2 text-sm text-white outline-none">
+          </div>
+        </div>
+
+        <!-- Formularz dodawania/edycji rozkazów ('orders' table) -->
+        <div class="p-5 border-t border-tactical-700 flex-1 bg-tactical-800/20">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-sm font-bold text-white">Rozkazy dla jednostki</h3>
+            <button class="text-xs bg-tactical-700 hover:bg-tactical-600 text-white px-2 py-1 rounded transition-colors"><i class="fa-solid fa-plus mr-1"></i>Dodaj</button>
+          </div>
+
+          <!-- Karta edycji rozkazu -->
+          <div class="bg-tactical-800 border border-tactical-600 rounded-lg p-3 space-y-3">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold text-tactical-accent">Rozkaz #1</span>
+              <button class="text-slate-500 hover:text-red-400"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1 uppercase">Ważny od</label>
+                <input type="datetime-local" value="1939-09-10T10:15" class="w-full bg-tactical-900 border border-tactical-700 rounded px-2 py-1 text-xs text-white outline-none">
+              </div>
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1 uppercase">Ważny do</label>
+                <input type="datetime-local" value="1939-09-10T12:00" class="w-full bg-tactical-900 border border-tactical-700 rounded px-2 py-1 text-xs text-white outline-none">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1 uppercase">Typ rozkazu</label>
+              <select class="w-full bg-tactical-900 border border-tactical-700 rounded px-2 py-1 text-xs text-white outline-none">
+                <option value="move" selected>MOVE (Przemieszczenie)</option>
+                <option value="attack">ATTACK (Atak)</option>
+                <option value="defend">DEFEND (Obrona)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1 uppercase">Treść / Opis</label>
+              <textarea rows="2" class="w-full bg-tactical-900 border border-tactical-700 rounded px-2 py-1 text-xs text-white outline-none resize-none">Przesunąć się na północ w kierunku rzeki...</textarea>
+            </div>
+            
+            <button class="w-full py-1.5 border border-tactical-600 border-dashed rounded text-xs text-slate-400 hover:text-white hover:border-tactical-400 transition-colors">
+              <i class="fa-solid fa-crosshairs mr-1"></i> Wybierz cel na mapie (Zapisze target_lat/lng)
+            </button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </body>
+</html>
