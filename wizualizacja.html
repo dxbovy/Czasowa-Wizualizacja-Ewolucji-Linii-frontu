@@ -1,146 +1,413 @@
 <!DOCTYPE html>
 <html lang="pl">
-  <head>
-    <meta charset="UTF-8">
-    <title>Wizualizacja: Bitwa nad Bzurą - CWEL(f)</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = { theme: { extend: { colors: { tactical: { 900: '#0f172a', 800: '#1e293b', 700: '#334155', accent: '#10b981' } } } } }
-    </script>
-  </head>
-  <body class="bg-tactical-900 text-slate-300 font-sans h-screen flex flex-col overflow-hidden">
-    
-    <!-- Topbar - Czysty, bez opcji edycji -->
-    <header class="h-14 bg-tactical-900 border-b border-tactical-700 flex justify-between items-center px-4 shrink-0 z-20">
-      <div class="flex items-center gap-4">
-        <a href="bitwy.html" class="w-8 h-8 flex items-center justify-center rounded-full bg-tactical-800 hover:bg-tactical-700 text-slate-400 hover:text-white transition-colors">
-          <i class="fa-solid fa-arrow-left"></i>
-        </a>
-        <div>
-          <h1 class="text-white font-bold leading-tight">Bitwa nad Bzurą</h1>
-          <div class="text-xs text-slate-500">Wizualizacja interaktywna</div>
-        </div>
-      </div>
-      <div>
-        <span class="text-xs font-medium text-slate-400 bg-tactical-800 px-3 py-1 rounded-full border border-tactical-700">
-          <i class="fa-solid fa-eye mr-1 text-tactical-accent"></i> Tryb Obserwatora
-        </span>
-      </div>
-    </header>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CWEL(f) - Wizualizacja Taktyczna</title>
+  
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%2310b981' d='M384 476.1L192 421.2l-148.2 49.4C19.7 478.7 0 460.6 0 435.5V107.5c0-18.7 12.8-35 30.9-39.5l161.1-40.3 192 54.9 148.2-49.4c24.1-8 43.8 10.1 43.8 35.2v328c0 18.7-12.8 35-30.9 39.5L384 476.1zm-96-368.6c-44.2 0-80 35.8-80 80c0 40.8 66.8 126.9 74.4 136.6c2.8 3.6 8.3 3.6 11.2 0c7.6-9.7 74.4-95.8 74.4-136.6c0-44.2-35.8-80-80-80zm0 112a32 32 0 1 1 0-64 32 32 0 1 1 0 64z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-    <div class="flex flex-1 overflow-hidden relative">
-      
-      <!-- Lewy Panel: Informacje (Tylko do odczytu) -->
-      <aside class="w-80 bg-tactical-900/95 backdrop-blur border-r border-tactical-700 flex flex-col shrink-0 overflow-y-auto z-10 shadow-xl shadow-black/50">
-        <!-- Mockup wybranej jednostki -->
-        <div class="p-5 border-b border-tactical-700">
-          <div class="flex items-center gap-2 mb-3">
-            <span class="w-3 h-3 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span>
-            <span class="text-xs uppercase font-bold tracking-wider text-blue-400">Siły Polskie</span>
-          </div>
-          <h2 class="text-2xl font-bold text-white leading-tight mb-1">14 Pułk Piechoty</h2>
-          <p class="text-sm text-slate-400 mb-4"><i class="fa-solid fa-users mr-1"></i> Batalion Piechoty</p>
-          
-          <div class="bg-tactical-800 p-3 rounded-lg border border-tactical-700">
-            <div class="flex justify-between text-sm mb-1">
-              <span class="text-slate-500">Liczebność (Siła)</span>
-              <span class="font-bold text-white">2 400</span>
-            </div>
-            <div class="flex justify-between text-sm">
-              <span class="text-slate-500">Wektor (Kierunek)</span>
-              <span class="font-bold text-white">Północny-Wschód</span>
-            </div>
-          </div>
-        </div>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            tactical: {
+              950: '#090a0f', 900: '#0f1015', 800: '#181920', 700: '#262730', 600: '#3b3d4a', 
+              accent: '#10b981', accentHover: '#059669'
+            }
+          }
+        }
+      }
+    }
+  </script>
 
-        <div class="p-5 flex-1">
-          <h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">
-            <i class="fa-solid fa-file-signature mr-2"></i>Historyczne Rozkazy
-          </h3>
-          
-          <!-- Lista rozkazów - bez opcji edycji -->
-          <div class="space-y-4 relative before:absolute before:inset-0 before:ml-2 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-700 before:to-transparent">
-            <!-- Aktywny rozkaz -->
-            <div class="relative pl-6">
-              <div class="absolute left-0 top-1.5 w-4 h-4 bg-tactical-accent rounded-full border-4 border-tactical-900 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
-              <div class="bg-tactical-800 border border-tactical-accent/30 rounded-lg p-3">
-                <div class="text-xs text-tactical-accent font-bold mb-1">TRWA OBECNIE (10:15 - 12:00)</div>
-                <div class="text-sm text-white">Przesunąć się na północ w kierunku rzeki, przygotować pozycje obronne.</div>
-              </div>
-            </div>
-            <!-- Przyszły rozkaz -->
-            <div class="relative pl-6 opacity-50">
-              <div class="absolute left-0 top-1.5 w-4 h-4 bg-slate-600 rounded-full border-4 border-tactical-900"></div>
-              <div class="bg-tactical-800 border border-tactical-700 rounded-lg p-3">
-                <div class="text-xs text-slate-400 font-bold mb-1">ZAPLANOWANO (12:00 - 18:00)</div>
-                <div class="text-sm text-white">Oczekiwanie na wsparcie artylerii.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </aside>
+  <!-- Własne style dla znaczników Leaflet (kropek) -->
+  <style>
+    .tactical-marker {
+      border-radius: 50%;
+      border: 2px solid white;
+      box-shadow: 0 0 10px rgba(0,0,0,0.8);
+      transition: all 0.2s ease;
+    }
+    .tactical-marker:hover {
+      transform: scale(1.3);
+      z-index: 1000 !important;
+    }
+    .tactical-marker-selected {
+      border: 3px solid #10b981;
+      box-shadow: 0 0 15px #10b981;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+    /* Ukrycie domyślnego kontrolera zoomu */
+    .leaflet-control-zoom { border: none !important; }
+    .leaflet-control-zoom a { background-color: #181920 !important; color: #10b981 !important; border-color: #262730 !important; }
+  </style>
+</head>
+<body class="bg-tactical-950 text-slate-300 font-sans h-screen flex flex-col overflow-hidden">
 
-      <!-- Mapa dla widza -->
-      <main class="flex-1 bg-slate-800 relative flex items-center justify-center overflow-hidden">
-        <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#10b981 1px, transparent 1px); background-size: 30px 30px;"></div>
-        
-        <div class="relative z-10 text-center">
-          <div class="w-16 h-16 bg-blue-500 rounded-full mx-auto flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.6)] animate-pulse">
-            <i class="fa-solid fa-user-shield text-white text-2xl"></i>
-          </div>
-          <!-- Imitacja wektora -->
-          <div class="absolute top-0 left-1/2 w-1 h-24 bg-gradient-to-t from-blue-500 to-transparent -translate-x-1/2 -translate-y-full">
-            <div class="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[8px] border-b-blue-500"></div>
-          </div>
-          
-          <p class="mt-8 text-slate-300 font-bold bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-700">Obszar Mapy Historycznej</p>
-        </div>
-      </main>
+  <!-- Topbar -->
+  <header class="h-14 bg-tactical-900 border-b border-tactical-700 flex justify-between items-center px-4 shrink-0 z-20 shadow-md">
+    <div class="flex items-center gap-4">
+      <a href="bitwy.html" class="text-slate-400 hover:text-white transition-colors" title="Wróć do bazy">
+        <i class="fa-solid fa-arrow-left"></i>
+      </a>
+      <h1 id="battle-title" class="text-white font-bold tracking-wide">Ładowanie danych misji...</h1>
     </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs font-bold text-blue-400 bg-blue-900/30 px-2 py-1 rounded border border-blue-500/30">Odtwarzacz Odtajniony</span>
+    </div>
+  </header>
 
-    <!-- Pasek Osi Czasu (Player) -->
-    <footer class="h-24 bg-tactical-900 border-t border-tactical-700 shrink-0 px-6 py-4 z-20 flex flex-col justify-center">
-      <div class="flex items-center gap-6">
-        
-        <!-- Przyciski Play/Pause -->
-        <div class="flex items-center gap-2">
-          <button class="w-12 h-12 rounded-full bg-tactical-accent hover:bg-emerald-600 text-white flex items-center justify-center text-xl shadow-lg shadow-tactical-accent/30 transition-all">
-            <i class="fa-solid fa-play ml-1"></i>
-          </button>
-        </div>
-        
-        <!-- Główna oś czasu -->
-        <div class="flex-1 flex flex-col">
-          <div class="flex justify-between text-xs text-slate-400 font-bold mb-2">
-            <span>START: 09.09.1939, 06:00</span>
-            <span class="text-tactical-accent text-sm px-3 py-1 bg-tactical-800 rounded border border-tactical-700 shadow-inner">
-              <i class="fa-regular fa-clock mr-1"></i> 10 Września, 10:15
-            </span>
-            <span>KONIEC: 22.09.1939, 23:59</span>
-          </div>
-          
-          <div class="relative h-4 bg-tactical-800 rounded-full border border-tactical-700 cursor-pointer group">
-            <!-- Wypełnienie -->
-            <div class="absolute top-0 left-0 h-full bg-gradient-to-r from-tactical-700 to-tactical-accent rounded-l-full" style="width: 20%;"></div>
-            <!-- Znaczniki wydarzeń na osi -->
-            <div class="absolute top-1/2 left-[15%] w-1.5 h-1.5 bg-white rounded-full -translate-y-1/2 shadow" title="Wydanie rozkazu"></div>
-            <div class="absolute top-1/2 left-[45%] w-1.5 h-1.5 bg-white rounded-full -translate-y-1/2 shadow" title="Starcie"></div>
-            <!-- Suwak -->
-            <div class="absolute top-1/2 w-5 h-5 bg-white rounded-full shadow-lg border-4 border-tactical-accent cursor-grab group-hover:scale-110 transition-transform" style="left: 20%; transform: translate(-50%, -50%);"></div>
-          </div>
-        </div>
-
-        <!-- Prędkość odtwarzania -->
-        <div class="w-32">
-          <select class="w-full bg-tactical-800 border border-tactical-700 text-sm text-white rounded-lg px-3 py-2 outline-none focus:border-tactical-accent">
-            <option>1x (Real-time)</option>
-            <option selected>1 godz. / sek</option>
-            <option>1 dzień / sek</option>
-          </select>
+  <!-- Główny kontener -->
+  <div class="flex flex-1 overflow-hidden relative">
+    
+    <!-- Panel boczny (Informacje o wybranej jednostce) -->
+    <aside id="side-panel" class="w-80 bg-tactical-950 border-r border-tactical-700 flex flex-col shrink-0 overflow-y-auto z-10 transition-transform transform -translate-x-full absolute h-full sm:relative sm:translate-x-0 shadow-2xl">
+      <div id="panel-content" class="p-6">
+        <div class="text-center text-slate-500 mt-10">
+          <i class="fa-solid fa-crosshairs text-4xl mb-4 text-tactical-700"></i>
+          <p>Kliknij jednostkę na mapie, aby odczytać jej dane i rozkazy.</p>
         </div>
       </div>
-    </footer>
+    </aside>
 
-  </body>
+    <!-- Mapa -->
+    <main class="flex-1 relative bg-tactical-900" id="map-container">
+      <div id="map" class="w-full h-full z-0"></div>
+    </main>
+  </div>
+
+  <!-- Pasek Osi Czasu (Na dole) -->
+  <footer class="h-24 bg-tactical-900 border-t border-tactical-700 flex flex-col shrink-0 px-6 py-3 justify-center z-20 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.3)]">
+    
+    <div class="flex justify-between text-xs text-slate-400 font-medium mb-2">
+      <span id="time-start">--:--</span>
+      <span class="text-white font-bold text-sm bg-tactical-800 px-3 py-1 rounded border border-tactical-700 shadow-inner">
+        <i class="fa-solid fa-clock text-tactical-accent mr-1"></i> <span id="time-current">Ładowanie...</span>
+      </span>
+      <span id="time-end">--:--</span>
+    </div>
+    
+    <div class="flex items-center gap-4">
+      <button id="btn-play" class="w-12 h-12 rounded-full bg-tactical-800 border border-tactical-700 hover:border-tactical-accent hover:text-tactical-accent text-white flex items-center justify-center transition-all shadow-lg">
+        <i class="fa-solid fa-play ml-1 text-xl"></i>
+      </button>
+      
+      <!-- Suwak Czasu -->
+      <input type="range" id="timeline-slider" min="0" max="100" value="0" class="flex-1 h-2 bg-tactical-800 rounded-lg appearance-none cursor-pointer accent-tactical-accent">
+    </div>
+  </footer>
+
+  <!-- Skrypty zewnętrzne -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- Główny kod aplikacji -->
+  <script>
+    // Konfiguracja Supabase
+    const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // Zmienne globalne stanu
+    let battle = null;
+    let dataCache = { sides: [], units: [], positions: [], orders: [] };
+    let map = null;
+    let markers = {}; // Przechowuje warstwy znaczników wg ID jednostki
+    let targetLine = null; // Linia wektora rozkazu
+    let selectedUnitId = null;
+    
+    // Zmienne osi czasu
+    let startTimeMs = 0;
+    let endTimeMs = 0;
+    let currentTimeMs = 0;
+    let isPlaying = false;
+    let playInterval = null;
+
+    // Inicjalizacja
+    async function init() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const battleId = urlParams.get('battle_id');
+      
+      if (!battleId) {
+        alert("Nie wybrano bitwy!");
+        window.location.href = "bitwy.html";
+        return;
+      }
+
+      await loadData(battleId);
+      setupMap();
+      setupTimeline();
+      updateVisuals();
+    }
+
+    // 1. Pobieranie danych z Supabase
+    async function loadData(battleId) {
+      // Pobieranie bitwy
+      const { data: bData } = await db.from('battles').select('*').eq('id', battleId).single();
+      battle = bData;
+      document.getElementById('battle-title').innerText = battle.name;
+
+      // Pobieranie powiązanych danych
+      const [sidesRes, unitsRes] = await Promise.all([
+        db.from('sides').select('*').eq('battle_id', battleId),
+        db.from('units').select('*').eq('battle_id', battleId)
+      ]);
+      dataCache.sides = sidesRes.data || [];
+      dataCache.units = unitsRes.data || [];
+
+      // Pobranie pozycji i rozkazów dla pobranych jednostek (dla płynności wczytujemy z góry)
+      const unitIds = dataCache.units.map(u => u.id);
+      
+      if (unitIds.length > 0) {
+        const [posRes, ordersRes] = await Promise.all([
+          db.from('unit_positions').select('*').in('unit_id', unitIds),
+          db.from('orders').select('*').in('unit_id', unitIds)
+        ]);
+        dataCache.positions = posRes.data || [];
+        dataCache.orders = ordersRes.data || [];
+      }
+    }
+
+    // 2. Inicjalizacja Mapy Leaflet
+function setupMap() {
+  map = L.map('map', { zoomControl: false }).setView([52.0, 19.0], 6);
+
+  // W 100% darmowy OpenStreetMap – zero kluczy API
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  if (dataCache.positions.length > 0) {
+    const lats = dataCache.positions.map(p => p.latitude);
+    const lngs = dataCache.positions.map(p => p.longitude);
+    map.fitBounds([
+      [Math.min(...lats), Math.min(...lngs)],
+      [Math.max(...lats), Math.max(...lngs)]
+    ]);
+  }
+}
+
+    // 3. Konfiguracja osi czasu
+    function setupTimeline() {
+      startTimeMs = new Date(battle.start_time).getTime();
+      endTimeMs = new Date(battle.end_time).getTime();
+      currentTimeMs = startTimeMs;
+
+      const slider = document.getElementById('timeline-slider');
+      slider.min = startTimeMs;
+      slider.max = endTimeMs;
+      slider.step = (endTimeMs - startTimeMs) / 1000; // Podział na 1000 kroków
+      slider.value = startTimeMs;
+
+      document.getElementById('time-start').innerText = formatDateTime(startTimeMs);
+      document.getElementById('time-end').innerText = formatDateTime(endTimeMs);
+
+      slider.addEventListener('input', (e) => {
+        currentTimeMs = parseInt(e.target.value);
+        updateVisuals();
+      });
+
+      document.getElementById('btn-play').addEventListener('click', togglePlay);
+    }
+
+    // 4. Logika odtwarzacza
+    function togglePlay() {
+      const btn = document.getElementById('btn-play');
+      isPlaying = !isPlaying;
+      
+      if (isPlaying) {
+        btn.innerHTML = '<i class="fa-solid fa-pause text-xl"></i>';
+        btn.classList.add('border-tactical-accent', 'text-tactical-accent');
+        
+        // Zwiększaj czas (szybkość dopasuj wedle uznania)
+        const step = (endTimeMs - startTimeMs) / 500; 
+        playInterval = setInterval(() => {
+          currentTimeMs += step;
+          if (currentTimeMs >= endTimeMs) {
+            currentTimeMs = endTimeMs;
+            togglePlay(); // Zakończ na końcu
+          }
+          document.getElementById('timeline-slider').value = currentTimeMs;
+          updateVisuals();
+        }, 50);
+      } else {
+        btn.innerHTML = '<i class="fa-solid fa-play ml-1 text-xl"></i>';
+        btn.classList.remove('border-tactical-accent', 'text-tactical-accent');
+        clearInterval(playInterval);
+      }
+    }
+
+    // 5. Główny silnik aktualizacji (wywoływany przy zmianie czasu)
+    function updateVisuals() {
+      document.getElementById('time-current').innerText = formatDateTime(currentTimeMs);
+
+      dataCache.units.forEach(unit => {
+        // Znajdź pozycję jednostki najbliższą, ale nie późniejszą niż obecny czas
+        const unitPositions = dataCache.positions
+          .filter(p => p.unit_id === unit.id && new Date(p.recorded_at).getTime() <= currentTimeMs)
+          .sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at)); // Sortuj malejąco
+
+        const currentPos = unitPositions[0]; // Bierzemy najnowszą dostępną w danym czasie
+
+        if (currentPos) {
+          // Jeśli marker nie istnieje, stwórz go
+          if (!markers[unit.id]) {
+            const side = dataCache.sides.find(s => s.id === unit.side_id);
+            const color = side ? side.color : '#ffffff';
+            
+            const icon = L.divIcon({
+              className: '',
+              html: `<div class="tactical-marker w-4 h-4" style="background-color: ${color};"></div>`,
+              iconSize: [16, 16],
+              iconAnchor: [8, 8]
+            });
+
+            const marker = L.marker([currentPos.latitude, currentPos.longitude], { icon: icon }).addTo(map);
+            
+            // Reakcja na kliknięcie
+            marker.on('click', () => selectUnit(unit.id));
+            markers[unit.id] = marker;
+          } else {
+            // Jeśli istnieje, zaktualizuj współrzędne (ruch po mapie)
+            markers[unit.id].setLatLng([currentPos.latitude, currentPos.longitude]);
+          }
+        } else {
+          // Jeśli jednostka jeszcze nie weszła na mapę, ukryj marker
+          if (markers[unit.id]) {
+            map.removeLayer(markers[unit.id]);
+            delete markers[unit.id];
+          }
+        }
+      });
+
+      // Zaktualizuj panel uboczny i linie, jeśli coś jest zaznaczone
+      if (selectedUnitId) {
+        updateSidePanel();
+      }
+    }
+
+    // 6. Logika kliknięcia w jednostkę
+    function selectUnit(id) {
+      selectedUnitId = id;
+      
+      // Resetowanie stylów wszystkich markerów
+      Object.values(markers).forEach(m => {
+        const div = m.getElement().querySelector('.tactical-marker');
+        if (div) div.classList.remove('tactical-marker-selected');
+      });
+
+      // Zaznaczenie wybranego
+      if (markers[id]) {
+        const div = markers[id].getElement().querySelector('.tactical-marker');
+        if (div) div.classList.add('tactical-marker-selected');
+      }
+
+      updateSidePanel();
+    }
+
+    // 7. Renderowanie panelu bocznego
+    function updateSidePanel() {
+      const panel = document.getElementById('panel-content');
+      const unit = dataCache.units.find(u => u.id === selectedUnitId);
+      const side = dataCache.sides.find(s => s.id === unit.side_id);
+      
+      // Aktualna pozycja z osi czasu
+      const currentPos = dataCache.positions
+        .filter(p => p.unit_id === selectedUnitId && new Date(p.recorded_at).getTime() <= currentTimeMs)
+        .sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at))[0];
+
+      // Aktywny rozkaz
+      const activeOrder = dataCache.orders.find(o => {
+        const validFrom = new Date(o.valid_from).getTime();
+        const validUntil = o.valid_until ? new Date(o.valid_until).getTime() : Infinity;
+        return o.unit_id === selectedUnitId && currentTimeMs >= validFrom && currentTimeMs <= validUntil;
+      });
+
+      // Rysowanie wektora (linii) do celu rozkazu
+      if (targetLine) map.removeLayer(targetLine);
+      if (activeOrder && activeOrder.target_latitude && currentPos) {
+        targetLine = L.polyline(
+          [[currentPos.latitude, currentPos.longitude], [activeOrder.target_latitude, activeOrder.target_longitude]], 
+          { color: side.color, weight: 2, dashArray: '5, 10', opacity: 0.8 }
+        ).addTo(map);
+      }
+
+      // Generowanie HTML Panelu
+      panel.innerHTML = `
+        <div class="flex justify-between items-start mb-4 border-b border-tactical-700 pb-3">
+          <span class="text-[10px] uppercase font-bold px-2 py-1 rounded text-white" style="background-color: ${side ? side.color : 'gray'}">
+            ${side ? side.name : 'Nieznana'}
+          </span>
+          <button onclick="closePanel()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-times"></i></button>
+        </div>
+        
+        <h2 class="text-2xl font-bold text-white mb-1">${unit.name}</h2>
+        <p class="text-sm text-slate-400 mb-6">Typ: ${unit.unit_type || 'Nieokreślony'} <span class="uppercase border border-slate-600 px-1 ml-2 text-[10px]">${unit.symbol || ''}</span></p>
+        
+        <div class="grid grid-cols-2 gap-3 mt-4 text-sm mb-6">
+          <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
+            <span class="block text-slate-500 text-xs mb-1">Stan (Siła)</span>
+            <span class="font-bold text-white text-lg">${currentPos ? (currentPos.strength || 'Brak danych') : '-'}</span>
+          </div>
+          <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
+            <span class="block text-slate-500 text-xs mb-1">Kierunek</span>
+            <span class="font-bold text-white text-lg">${currentPos && currentPos.heading ? currentPos.heading + '&deg;' : '-'}</span>
+          </div>
+        </div>
+
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Aktywne rozkazy</h3>
+        ${activeOrder ? `
+          <div class="bg-tactical-900 border border-l-4 border-tactical-700 rounded p-4 shadow-md" style="border-left-color: ${side.color}">
+            <div class="flex justify-between text-xs text-slate-400 mb-2">
+              <span class="uppercase font-bold text-white">${activeOrder.order_type}</span>
+            </div>
+            <p class="text-slate-300 text-sm leading-relaxed">${activeOrder.description}</p>${activeOrder.target_latitude ? `<p class="text-xs text-tactical-accent mt-3"><i class="fa-solid fa-location-crosshairs"></i> Cel namierzony na mapie</p>` : ''}
+          </div>
+        ` : `
+          <div class="text-slate-500 text-sm italic border border-dashed border-tactical-700 p-4 rounded text-center">
+            Jednostka nie wykonuje aktualnie żadnych rozkazów lub czeka na dyspozycje.
+          </div>
+        `}
+      `;
+    }
+
+    function closePanel() {
+      selectedUnitId = null;
+      if (targetLine) map.removeLayer(targetLine);
+      updateVisuals();
+      
+      const panel = document.getElementById('panel-content');
+      panel.innerHTML = `
+        <div class="text-center text-slate-500 mt-10">
+          <i class="fa-solid fa-crosshairs text-4xl mb-4 text-tactical-700"></i>
+          <p>Kliknij jednostkę na mapie, aby odczytać jej dane i rozkazy.</p>
+        </div>
+      `;
+    }
+
+    // Narzędzie do formatowania daty z czasem
+    function formatDateTime(ms) {
+      const d = new Date(ms);
+      return d.toLocaleDateString('pl-PL') + ' ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Uruchom na starcie
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
 </html>

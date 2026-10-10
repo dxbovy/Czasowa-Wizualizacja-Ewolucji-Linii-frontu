@@ -3,22 +3,29 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CWEL(f) - Czasowa Wizualizacja Ewolucji Linii</title>
+    <title>CWEL(f)</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%2310b981' d='M384 476.1L192 421.2l-148.2 49.4C19.7 478.7 0 460.6 0 435.5V107.5c0-18.7 12.8-35 30.9-39.5l161.1-40.3 192 54.9 148.2-49.4c24.1-8 43.8 10.1 43.8 35.2v328c0 18.7-12.8 35-30.9 39.5L384 476.1zm-96-368.6c-44.2 0-80 35.8-80 80c0 40.8 66.8 126.9 74.4 136.6c2.8 3.6 8.3 3.6 11.2 0c7.6-9.7 74.4-95.8 74.4-136.6c0-44.2-35.8-80-80-80zm0 112a32 32 0 1 1 0-64 32 32 0 1 1 0 64z'/%3E%3C/svg%3E">
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              tactical: {
-                900: '#0f172a', 800: '#1e293b', 700: '#334155',
-                accent: '#10b981', accentHover: '#059669'
-              }
-            }
-          }
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        tactical: {
+          950: '#090a0f', // niemal czarne tło (pitch dark)
+          900: '#0f1015', // głęboki grafit / węgiel na główne tła i panele
+          800: '#181920', // lekko jaśniejszy grafit na karty i kontenery
+          700: '#262730', // obramowania (borders), podziały i tła przycisków
+          600: '#3b3d4a', // hover dla elementów interaktywnych
+          accent: '#10b981',      // taktyczna zieleń
+          accentHover: '#059669'
         }
       }
+    }
+  }
+}
     </script>
   </head>
 
