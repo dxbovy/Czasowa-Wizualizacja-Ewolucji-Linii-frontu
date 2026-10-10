@@ -46,24 +46,29 @@ let frakcje = {
 };
 let aktywnaFrakcja = 'pl';
 let trybMalowania = false;
+const CZAS_START = Date.UTC(1939, 8, 1, 4, 0);    // 1 IX 1939, 04:00
+const CZAS_KONIEC = Date.UTC(1939, 9, 6, 23, 0);  // 6 X 1939
+const GODZINA = 3600000;
+let czasTeraz = CZAS_START;
+let klatki = {};  // { [timestamp]: FeatureCollection }
+function zapiszStan(tylkoHistoria = false) {
+    const features = map.pm.getGeomanLayers().map(layer => layer.toGeoJSON());
+    const stan = { type: "FeatureCollection", features };
 
-function zapiszStan() {
-    const warstwy = map.pm.getGeomanLayers();
-    const features = warstwy.map(layer => layer.toGeoJSON());
+    const ostatni = historiaMapy[historiaMapy.length - 1];
+if (ostatni && JSON.stringify(ostatni.features) === JSON.stringify(stan.features)) return;
+    historiaMapy.push(stan);
+    if (historiaMapy.length > 15) historiaMapy.shift();
 
-    historiaMapy.push({
-        type: "FeatureCollection",
-        features: features
-    });
-
-    if (historiaMapy.length > 15) {
-        historiaMapy.shift();
-    }
+    if (!tylkoHistoria) zapiszKlatke(stan);
 }
-zapiszStan();
+zapiszStan(true);
 
 function odtworzStan(geoJsonData) {
+    map.pm.disableDraw();
     map.pm.getGeomanLayers().forEach(layer => layer.remove());
+    if (!geoJsonData || !geoJsonData.features.length) return;
+
     const geoJsonLayer = L.geoJSON(geoJsonData).addTo(map);
 
     geoJsonLayer.getLayers().forEach(layer => {
@@ -92,6 +97,8 @@ function odtworzStan(geoJsonData) {
 // 3. FUNKCJE POMOCNICZE (Klikanie i Aneksja)
 // =========================================================================
 function dodajEdycjeIKlikanie(layer) {
+    layer.on('pm:dragend pm:edit', () => zapiszStan());
+
     layer.on('click', (e) => {
         if (map.pm.globalDrawModeEnabled()) return;
 
@@ -340,28 +347,25 @@ document.getElementById('draw-arrow-btn').addEventListener('click', () => {
 // 5. IMPORT I EKSPORT
 // =========================================================================
 document.getElementById('export-btn').addEventListener('click', () => {
-    const layers = map.pm.getGeomanLayers();
-    if (layers.length === 0) {
+    if (Object.keys(klatki).length === 0) {
         alert("Najpierw coś narysuj na mapie!");
         return;
     }
-    const features = layers.map(layer => layer.toGeoJSON());
-    const featureCollection = { type: "FeatureCollection", features: features, frakcje: frakcje };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(featureCollection, null, 2));
-    
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `kampania_front_${new Date().getTime()}.json`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+    const dane = { format: "kampania-v2", frakcje, klatki };
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dane));
+
+    const a = document.createElement('a');
+    a.setAttribute("href", dataStr);
+    a.setAttribute("download", `kampania_${new Date().getTime()}.json`);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
 });
 
 const importBtn = document.getElementById('import-btn');
 const importInput = document.getElementById('import-input');
 
 importBtn.addEventListener('click', () => importInput.click());
-
 importInput.addEventListener('change', (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -369,35 +373,26 @@ importInput.addEventListener('change', (event) => {
     const reader = new FileReader();
     reader.onload = (e) => {
         try {
-            const geoJsonData = JSON.parse(e.target.result);
-            if (geoJsonData.frakcje) {
-                Object.assign(frakcje, geoJsonData.frakcje);
+            const dane = JSON.parse(e.target.result);
+
+            if (dane.frakcje) {
+                Object.assign(frakcje, dane.frakcje);
                 odswiezListeFrakcji();
             }
-            const geoJsonLayer = L.geoJSON(geoJsonData).addTo(map);
 
-            geoJsonLayer.getLayers().forEach(layer => {
-                layer.options.pmIgnore = false;
-                L.PM.reInitLayer(layer);
-
-                const props = layer.feature?.properties;
-                if (props?.isArrow && layer instanceof L.Polyline) {
-                    stylujStrzalke(layer, props.color);
-                }
-                if (props?.frakcja && !(layer instanceof L.Marker)) zastosujFrakcje(layer, props.frakcja);
-                if (props) {
-                    if (layer instanceof L.Marker && props.iconType) {
-                        zastosujIkone(layer, props.iconType, props.iconUrl);
-                    }
-                    const nazwa = props.name || props.NAME || props.Name || props.SUBJECTO;
-                    if (nazwa) {
-                        layer.bindTooltip(nazwa, { permanent: false, sticky: true, className: "moj-tooltip" });
-                    }
-                }
-                dodajEdycjeIKlikanie(layer);
-            });
+            if (dane.klatki) {
+                // nowy format: cała oś czasu
+                klatki = dane.klatki;
+                autozapis();
+                odswiezZnaczniki();
+                ustawCzas(czasTeraz);
+            } else {
+                // stary format (zwykły GeoJSON): dołącz do bieżącej godziny
+                const obecne = map.pm.getGeomanLayers().map(l => l.toGeoJSON());
+                odtworzStan({ type: "FeatureCollection", features: [...obecne, ...dane.features] });
+                zapiszStan();
+            }
             console.log("Pomyślnie zaimportowano plik:", file.name);
-            zapiszStan();
         } catch (error) {
             alert("Błąd! To nie jest poprawny plik JSON.");
             console.error(error);
@@ -413,7 +408,7 @@ document.addEventListener('keydown', (e) => {
             historiaMapy.pop();
             const poprzedniStan = historiaMapy[historiaMapy.length - 1];
             odtworzStan(poprzedniStan);
-            console.log("Cofnięto!");
+            zapiszKlatke(poprzedniStan);
         }
     }
 });
@@ -450,8 +445,7 @@ kolorInput.addEventListener('input', () => {
         if (l.feature?.properties?.frakcja === aktywnaFrakcja) zastosujFrakcje(l, aktywnaFrakcja);
     });
 });
-kolorInput.addEventListener('change', () => zapiszStan());
-
+kolorInput.addEventListener('change', () => { zapiszStan(); autozapis(); });
 document.getElementById('dodaj-frakcje-btn').addEventListener('click', () => {
     const nazwa = prompt("Nazwa nowej frakcji:");
     if (!nazwa) return;
@@ -460,6 +454,7 @@ document.getElementById('dodaj-frakcje-btn').addEventListener('click', () => {
     frakcje[id] = { nazwa, kolor: losowy };
     aktywnaFrakcja = id;
     odswiezListeFrakcji();
+    autozapis();
 });
 
 malujBtn.addEventListener('click', () => {
@@ -468,3 +463,131 @@ malujBtn.addEventListener('click', () => {
     malujBtn.style.background = trybMalowania ? '#f1c40f' : '';
     document.getElementById('map').style.cursor = trybMalowania ? 'crosshair' : '';
 });
+// =========================================================================
+// 6. OŚ CZASU (klatki)
+// =========================================================================
+const suwak = document.getElementById('czas-suwak');
+const etykieta = document.getElementById('czas-etykieta');
+const znaczniki = document.getElementById('czas-znaczniki');
+const playBtn = document.getElementById('czas-play');
+suwak.max = Math.round((CZAS_KONIEC - CZAS_START) / GODZINA);
+
+// najbliższa klatka w czasie <= t (lub null)
+function najblizszaKlatka(t) {
+    let wynik = null;
+    for (const k of Object.keys(klatki)) {
+        const n = Number(k);
+        if (n <= t && (wynik === null || n > wynik)) wynik = n;
+    }
+    return wynik;
+}
+
+function zapiszKlatke(stan) {
+    const klucz = najblizszaKlatka(czasTeraz);
+    const dokladna = klucz === czasTeraz;
+    const poprzednia = klucz !== null ? klatki[klucz] : { features: [] };
+    const taSama = JSON.stringify(poprzednia.features) === JSON.stringify(stan.features);
+
+    // nowa klatka powstaje tylko, gdy coś faktycznie się zmieniło
+    if (dokladna || !taSama) {
+        klatki[czasTeraz] = stan;
+        autozapis();
+        odswiezZnaczniki();
+        odswiezEtykiete();
+    }
+}
+
+function autozapis() {
+    try {
+        localStorage.setItem('kampania-autozapis', JSON.stringify({ frakcje, klatki }));
+    } catch (err) {
+        console.warn('Autozapis nieudany (za duży plik?)', err);
+    }
+}
+
+function odswiezEtykiete() {
+    const tekst = new Date(czasTeraz).toLocaleString('pl-PL', {
+        timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+    const jestKlatka = najblizszaKlatka(czasTeraz) === czasTeraz;
+    etykieta.textContent = tekst + (jestKlatka ? '  ● klatka' : '');
+    etykieta.style.color = jestKlatka ? '#c0392b' : '#2c3e50';
+}
+
+function odswiezZnaczniki() {
+    znaczniki.innerHTML = '';
+    const zakres = CZAS_KONIEC - CZAS_START;
+    for (const k of Object.keys(klatki)) {
+        const proc = ((Number(k) - CZAS_START) / zakres) * 100;
+        if (proc < 0 || proc > 100) continue;
+        const kreska = document.createElement('div');
+        kreska.style.cssText = `position:absolute; left:${proc}%; top:0; width:3px; height:10px; background:#e74c3c; margin-left:-1px;`;
+        znaczniki.appendChild(kreska);
+    }
+}
+
+function ustawCzas(t) {
+    czasTeraz = Math.min(CZAS_KONIEC, Math.max(CZAS_START, t));
+    wybraneDoAneksji = [];
+
+    const klucz = najblizszaKlatka(czasTeraz);
+    const stan = klucz !== null ? klatki[klucz] : null;
+    odtworzStan(stan);
+    historiaMapy = [{ type: "FeatureCollection", features: stan ? stan.features : [] }];
+
+    suwak.value = Math.round((czasTeraz - CZAS_START) / GODZINA);
+    odswiezEtykiete();
+}
+
+suwak.addEventListener('input', () => ustawCzas(CZAS_START + Number(suwak.value) * GODZINA));
+document.getElementById('czas-wstecz').addEventListener('click', () => ustawCzas(czasTeraz - GODZINA));
+document.getElementById('czas-dalej').addEventListener('click', () => ustawCzas(czasTeraz + GODZINA));
+document.getElementById('czas-dzien-wstecz').addEventListener('click', () => ustawCzas(czasTeraz - 24 * GODZINA));
+document.getElementById('czas-dzien-dalej').addEventListener('click', () => ustawCzas(czasTeraz + 24 * GODZINA));
+
+document.getElementById('czas-usun-klatke').addEventListener('click', () => {
+    if (!klatki[czasTeraz]) {
+        alert("W tej godzinie nie ma własnej klatki.");
+        return;
+    }
+    delete klatki[czasTeraz];
+    autozapis();
+    odswiezZnaczniki();
+    ustawCzas(czasTeraz);
+});
+
+// odtwarzanie: +1h co 300 ms
+let timerPlay = null;
+playBtn.addEventListener('click', () => {
+    if (timerPlay) {
+        clearInterval(timerPlay);
+        timerPlay = null;
+        playBtn.textContent = '▶ Odtwórz';
+        return;
+    }
+    playBtn.textContent = '⏸ Pauza';
+    timerPlay = setInterval(() => {
+        if (czasTeraz >= CZAS_KONIEC) {
+            clearInterval(timerPlay);
+            timerPlay = null;
+            playBtn.textContent = '▶ Odtwórz';
+            return;
+        }
+        ustawCzas(czasTeraz + GODZINA);
+    }, 300);
+});
+
+// start: wczytaj autozapis, jeśli jest
+try {
+    const zapis = JSON.parse(localStorage.getItem('kampania-autozapis'));
+    if (zapis?.klatki) {
+        klatki = zapis.klatki;
+        Object.assign(frakcje, zapis.frakcje || {});
+        odswiezListeFrakcji();
+    }
+} catch (err) {
+    console.warn('Nie udało się wczytać autozapisu', err);
+}
+odswiezZnaczniki();
+ustawCzas(CZAS_START);
