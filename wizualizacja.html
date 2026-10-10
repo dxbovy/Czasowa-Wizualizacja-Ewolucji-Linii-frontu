@@ -7,51 +7,69 @@
   
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%2310b981' d='M384 476.1L192 421.2l-148.2 49.4C19.7 478.7 0 460.6 0 435.5V107.5c0-18.7 12.8-35 30.9-39.5l161.1-40.3 192 54.9 148.2-49.4c24.1-8 43.8 10.1 43.8 35.2v328c0 18.7-12.8 35-30.9 39.5L384 476.1zm-96-368.6c-44.2 0-80 35.8-80 80c0 40.8 66.8 126.9 74.4 136.6c2.8 3.6 8.3 3.6 11.2 0c7.6-9.7 74.4-95.8 74.4-136.6c0-44.2-35.8-80-80-80zm0 112a32 32 0 1 1 0-64 32 32 0 1 1 0 64z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-  
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Biblioteka do geometrii przestrzennej (Linia frontu) -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
   <script>
     tailwind.config = {
       theme: {
-        extend: {
-          colors: {
-            tactical: {
-              950: '#090a0f', 900: '#0f1015', 800: '#181920', 700: '#262730', 600: '#3b3d4a', 
-              accent: '#10b981', accentHover: '#059669'
-            }
-          }
-        }
+        extend: { colors: { tactical: { 950: '#090a0f', 900: '#0f1015', 800: '#181920', 700: '#262730', 600: '#3b3d4a', accent: '#10b981', accentHover: '#059669' } } }
       }
     }
   </script>
 
-  <!-- Własne style dla znaczników Leaflet (kropek) -->
   <style>
+    /* Odwrócenie kafelków OSM na mroczny, radarowy klimat (bez płatnego API) */
+    .leaflet-tile { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
+    .leaflet-control-zoom { border: none !important; }
+    .leaflet-control-zoom a { background-color: #181920 !important; color: #10b981 !important; border-color: #262730 !important; }
+
+    /* Znaczniki jednostek */
     .tactical-marker {
       border-radius: 50%;
       border: 2px solid white;
       box-shadow: 0 0 10px rgba(0,0,0,0.8);
-      transition: all 0.2s ease;
+      transition: transform 0.2s ease;
+      position: relative;
     }
-    .tactical-marker:hover {
-      transform: scale(1.3);
-      z-index: 1000 !important;
-    }
+    .tactical-marker:hover { transform: scale(1.3); z-index: 1000 !important; }
     .tactical-marker-selected {
       border: 3px solid #10b981;
       box-shadow: 0 0 15px #10b981;
       animation: pulse 1.5s infinite;
     }
+
+    /* Efekt Zniszczenia (Wrak) */
+    .tactical-marker-destroyed {
+      background-color: #1f2937 !important; /* Szary */
+      border: 2px solid #ef4444 !important; /* Czerwony */
+      opacity: 0.6;
+    }
+    .tactical-marker-destroyed::after {
+      content: '✖';
+      color: #ef4444;
+      font-size: 10px;
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    /* Wybuch przy momencie zniszczenia */
+    .explosion-effect {
+      box-shadow: 0 0 20px 10px #ef4444, 0 0 40px 20px #f59e0b !important;
+      background-color: #f59e0b !important;
+      border-color: #ffffff !important;
+      z-index: 9999 !important;
+    }
+
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
       70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
       100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
     }
-    /* Ukrycie domyślnego kontrolera zoomu */
-    .leaflet-control-zoom { border: none !important; }
-    .leaflet-control-zoom a { background-color: #181920 !important; color: #10b981 !important; border-color: #262730 !important; }
   </style>
 </head>
 <body class="bg-tactical-950 text-slate-300 font-sans h-screen flex flex-col overflow-hidden">
@@ -59,20 +77,16 @@
   <!-- Topbar -->
   <header class="h-14 bg-tactical-900 border-b border-tactical-700 flex justify-between items-center px-4 shrink-0 z-20 shadow-md">
     <div class="flex items-center gap-4">
-      <a href="bitwy.html" class="text-slate-400 hover:text-white transition-colors" title="Wróć do bazy">
-        <i class="fa-solid fa-arrow-left"></i>
-      </a>
+      <a href="bitwy.html" class="text-slate-400 hover:text-white transition-colors" title="Wróć do bazy"><i class="fa-solid fa-arrow-left"></i></a>
       <h1 id="battle-title" class="text-white font-bold tracking-wide">Ładowanie danych misji...</h1>
     </div>
     <div class="flex items-center gap-3">
-      <span class="text-xs font-bold text-blue-400 bg-blue-900/30 px-2 py-1 rounded border border-blue-500/30">Odtwarzacz Odtajniony</span>
+      <span class="text-xs font-bold text-blue-400 bg-blue-900/30 px-2 py-1 rounded border border-blue-500/30">Symulacja Przestrzenna Aktywna</span>
     </div>
   </header>
 
-  <!-- Główny kontener -->
   <div class="flex flex-1 overflow-hidden relative">
-    
-    <!-- Panel boczny (Informacje o wybranej jednostce) -->
+    <!-- Panel boczny -->
     <aside id="side-panel" class="w-80 bg-tactical-950 border-r border-tactical-700 flex flex-col shrink-0 overflow-y-auto z-10 transition-transform transform -translate-x-full absolute h-full sm:relative sm:translate-x-0 shadow-2xl">
       <div id="panel-content" class="p-6">
         <div class="text-center text-slate-500 mt-10">
@@ -88,9 +102,8 @@
     </main>
   </div>
 
-  <!-- Pasek Osi Czasu (Na dole) -->
+  <!-- Pasek Osi Czasu -->
   <footer class="h-24 bg-tactical-900 border-t border-tactical-700 flex flex-col shrink-0 px-6 py-3 justify-center z-20 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.3)]">
-    
     <div class="flex justify-between text-xs text-slate-400 font-medium mb-2">
       <span id="time-start">--:--</span>
       <span class="text-white font-bold text-sm bg-tactical-800 px-3 py-1 rounded border border-tactical-700 shadow-inner">
@@ -98,53 +111,42 @@
       </span>
       <span id="time-end">--:--</span>
     </div>
-    
     <div class="flex items-center gap-4">
       <button id="btn-play" class="w-12 h-12 rounded-full bg-tactical-800 border border-tactical-700 hover:border-tactical-accent hover:text-tactical-accent text-white flex items-center justify-center transition-all shadow-lg">
         <i class="fa-solid fa-play ml-1 text-xl"></i>
       </button>
-      
-      <!-- Suwak Czasu -->
       <input type="range" id="timeline-slider" min="0" max="100" value="0" class="flex-1 h-2 bg-tactical-800 rounded-lg appearance-none cursor-pointer accent-tactical-accent">
     </div>
   </footer>
 
-  <!-- Skrypty zewnętrzne -->
+  <!-- Skrypty -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <!-- Główny kod aplikacji -->
   <script>
     // Konfiguracja Supabase
     const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
     const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Zmienne globalne stanu
     let battle = null;
-    let dataCache = { sides: [], units: [], positions: [], orders: [] };
+    let dataCache = { sides: [], units: [], positions: [], orders: [], events: [] };
     let map = null;
-    let markers = {}; // Przechowuje warstwy znaczników wg ID jednostki
-    let targetLine = null; // Linia wektora rozkazu
+    let markers = {}; 
+    let targetLine = null;
+    let territoryLayer = null; // Warstwa dla linii frontu
     let selectedUnitId = null;
     
-    // Zmienne osi czasu
     let startTimeMs = 0;
     let endTimeMs = 0;
     let currentTimeMs = 0;
     let isPlaying = false;
     let playInterval = null;
 
-    // Inicjalizacja
     async function init() {
       const urlParams = new URLSearchParams(window.location.search);
       const battleId = urlParams.get('battle_id');
-      
-      if (!battleId) {
-        alert("Nie wybrano bitwy!");
-        window.location.href = "bitwy.html";
-        return;
-      }
+      if (!battleId) { alert("Nie wybrano bitwy!"); window.location.href = "bitwy.html"; return; }
 
       await loadData(battleId);
       setupMap();
@@ -152,14 +154,11 @@
       updateVisuals();
     }
 
-    // 1. Pobieranie danych z Supabase
     async function loadData(battleId) {
-      // Pobieranie bitwy
       const { data: bData } = await db.from('battles').select('*').eq('id', battleId).single();
       battle = bData;
       document.getElementById('battle-title').innerText = battle.name;
 
-      // Pobieranie powiązanych danych
       const [sidesRes, unitsRes] = await Promise.all([
         db.from('sides').select('*').eq('battle_id', battleId),
         db.from('units').select('*').eq('battle_id', battleId)
@@ -167,42 +166,39 @@
       dataCache.sides = sidesRes.data || [];
       dataCache.units = unitsRes.data || [];
 
-      // Pobranie pozycji i rozkazów dla pobranych jednostek (dla płynności wczytujemy z góry)
       const unitIds = dataCache.units.map(u => u.id);
-      
       if (unitIds.length > 0) {
-        const [posRes, ordersRes] = await Promise.all([
+        // Zwróć uwagę, że pobieramy też unit_events dla efektów zniszczenia!
+        const [posRes, ordersRes, eventsRes] = await Promise.all([
           db.from('unit_positions').select('*').in('unit_id', unitIds),
-          db.from('orders').select('*').in('unit_id', unitIds)
+          db.from('orders').select('*').in('unit_id', unitIds),
+          db.from('unit_events').select('*').in('unit_id', unitIds)
         ]);
         dataCache.positions = posRes.data || [];
         dataCache.orders = ordersRes.data || [];
+        dataCache.events = eventsRes.data || [];
       }
     }
 
-    // 2. Inicjalizacja Mapy Leaflet
-function setupMap() {
-  map = L.map('map', { zoomControl: false }).setView([52.0, 19.0], 6);
+    function setupMap() {
+      map = L.map('map', { zoomControl: false }).setView([52.0, 19.0], 6);
+      
+      // Darmowy OpenStreetMap + CSS filter = Mroczny wojskowy radar
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OSM'
+      }).addTo(map);
 
-  // W 100% darmowy OpenStreetMap – zero kluczy API
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
+      L.control.zoom({ position: 'bottomright' }).addTo(map);
+      territoryLayer = L.layerGroup().addTo(map); // Grupa dla poligonów frontu
 
-  L.control.zoom({ position: 'bottomright' }).addTo(map);
+      if (dataCache.positions.length > 0) {
+        const lats = dataCache.positions.map(p => p.latitude);
+        const lngs = dataCache.positions.map(p => p.longitude);
+        map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]]);
+      }
+    }
 
-  if (dataCache.positions.length > 0) {
-    const lats = dataCache.positions.map(p => p.latitude);
-    const lngs = dataCache.positions.map(p => p.longitude);
-    map.fitBounds([
-      [Math.min(...lats), Math.min(...lngs)],
-      [Math.max(...lats), Math.max(...lngs)]
-    ]);
-  }
-}
-
-    // 3. Konfiguracja osi czasu
     function setupTimeline() {
       startTimeMs = new Date(battle.start_time).getTime();
       endTimeMs = new Date(battle.end_time).getTime();
@@ -211,7 +207,7 @@ function setupMap() {
       const slider = document.getElementById('timeline-slider');
       slider.min = startTimeMs;
       slider.max = endTimeMs;
-      slider.step = (endTimeMs - startTimeMs) / 1000; // Podział na 1000 kroków
+      slider.step = (endTimeMs - startTimeMs) / 1000;
       slider.value = startTimeMs;
 
       document.getElementById('time-start').innerText = formatDateTime(startTimeMs);
@@ -225,26 +221,23 @@ function setupMap() {
       document.getElementById('btn-play').addEventListener('click', togglePlay);
     }
 
-    // 4. Logika odtwarzacza
     function togglePlay() {
       const btn = document.getElementById('btn-play');
       isPlaying = !isPlaying;
-      
       if (isPlaying) {
         btn.innerHTML = '<i class="fa-solid fa-pause text-xl"></i>';
         btn.classList.add('border-tactical-accent', 'text-tactical-accent');
         
-        // Zwiększaj czas (szybkość dopasuj wedle uznania)
-        const step = (endTimeMs - startTimeMs) / 500; 
+        const step = (endTimeMs - startTimeMs) / 1000; // Szybkość symulacji
         playInterval = setInterval(() => {
           currentTimeMs += step;
           if (currentTimeMs >= endTimeMs) {
             currentTimeMs = endTimeMs;
-            togglePlay(); // Zakończ na końcu
+            togglePlay();
           }
           document.getElementById('timeline-slider').value = currentTimeMs;
           updateVisuals();
-        }, 50);
+        }, 30); // ~30 FPS
       } else {
         btn.innerHTML = '<i class="fa-solid fa-play ml-1 text-xl"></i>';
         btn.classList.remove('border-tactical-accent', 'text-tactical-accent');
@@ -252,102 +245,168 @@ function setupMap() {
       }
     }
 
-    // 5. Główny silnik aktualizacji (wywoływany przy zmianie czasu)
+    // Funkcja obliczająca PŁYNNĄ pozycję między dwoma punktami w czasie
+    function getInterpolatedState(unitId, timeMs) {
+      const unitPositions = dataCache.positions.filter(p => p.unit_id === unitId);
+      if (unitPositions.length === 0) return null;
+
+      // Sortujemy chronologicznie
+      unitPositions.sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
+
+      // Zanim pojawi się pierwsza pozycja
+      if (timeMs < new Date(unitPositions[0].recorded_at).getTime()) return null;
+      // Po ostatniej pozycji
+      if (timeMs >= new Date(unitPositions[unitPositions.length - 1].recorded_at).getTime()) {
+        return unitPositions[unitPositions.length - 1]; // Zwróć ostatnią znaną
+      }
+
+      // Znajdź pozycję A (przed) i B (po)
+      let posA = unitPositions[0];
+      let posB = unitPositions[1];
+      for (let i = 0; i < unitPositions.length - 1; i++) {
+        const tA = new Date(unitPositions[i].recorded_at).getTime();
+        const tB = new Date(unitPositions[i+1].recorded_at).getTime();
+        if (timeMs >= tA && timeMs <= tB) {
+          posA = unitPositions[i];
+          posB = unitPositions[i+1];
+          break;
+        }
+      }
+
+      const tA = new Date(posA.recorded_at).getTime();
+      const tB = new Date(posB.recorded_at).getTime();
+      const factor = (timeMs - tA) / (tB - tA); // Procent przebytej drogi (0 do 1)
+
+      return {
+        latitude: posA.latitude + (posB.latitude - posA.latitude) * factor,
+        longitude: posA.longitude + (posB.longitude - posA.longitude) * factor,
+        strength: posA.strength,
+        heading: posA.heading
+      };
+    }
+
     function updateVisuals() {
       document.getElementById('time-current').innerText = formatDateTime(currentTimeMs);
+      territoryLayer.clearLayers(); // Czyścimy poprzednie linie frontu
+
+      const activePositionsBySide = {}; // Do zbierania punktów do linii frontu
 
       dataCache.units.forEach(unit => {
-        // Znajdź pozycję jednostki najbliższą, ale nie późniejszą niż obecny czas
-        const unitPositions = dataCache.positions
-          .filter(p => p.unit_id === unit.id && new Date(p.recorded_at).getTime() <= currentTimeMs)
-          .sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at)); // Sortuj malejąco
+        // Sprawdź czy jednostka została zniszczona
+        const destructionEvent = dataCache.events.find(e => 
+          e.unit_id === unit.id && 
+          (e.event_type === 'destroyed' || e.event_type === 'eliminated') &&
+          new Date(e.occurred_at).getTime() <= currentTimeMs
+        );
 
-        const currentPos = unitPositions[0]; // Bierzemy najnowszą dostępną w danym czasie
+        let currentState;
+        let isDestroyed = !!destructionEvent;
+        let isExploding = false;
 
-        if (currentPos) {
-          // Jeśli marker nie istnieje, stwórz go
-          if (!markers[unit.id]) {
-            const side = dataCache.sides.find(s => s.id === unit.side_id);
-            const color = side ? side.color : '#ffffff';
-            
-            const icon = L.divIcon({
-              className: '',
-              html: `<div class="tactical-marker w-4 h-4" style="background-color: ${color};"></div>`,
-              iconSize: [16, 16],
-              iconAnchor: [8, 8]
-            });
-
-            const marker = L.marker([currentPos.latitude, currentPos.longitude], { icon: icon }).addTo(map);
-            
-            // Reakcja na kliknięcie
-            marker.on('click', () => selectUnit(unit.id));
-            markers[unit.id] = marker;
-          } else {
-            // Jeśli istnieje, zaktualizuj współrzędne (ruch po mapie)
-            markers[unit.id].setLatLng([currentPos.latitude, currentPos.longitude]);
+        if (isDestroyed) {
+          const eventTime = new Date(destructionEvent.occurred_at).getTime();
+          // Zamrożenie jednostki w miejscu jej zniszczenia
+          currentState = getInterpolatedState(unit.id, eventTime);
+          
+          // Efekt eksplozji jeśli zniszczenie nastąpiło max 6 "wirtualnych" godzin temu
+          const explosionDurationMs = 6 * 60 * 60 * 1000; 
+          if (currentTimeMs >= eventTime && currentTimeMs <= eventTime + explosionDurationMs) {
+            isExploding = true;
           }
         } else {
-          // Jeśli jednostka jeszcze nie weszła na mapę, ukryj marker
-          if (markers[unit.id]) {
-            map.removeLayer(markers[unit.id]);
-            delete markers[unit.id];
+          // Płynne obliczanie pozycji
+          currentState = getInterpolatedState(unit.id, currentTimeMs);
+        }
+
+        if (currentState) {
+          const side = dataCache.sides.find(s => s.id === unit.side_id);
+          
+          // Zbieramy punkty do terytorium/frontu (tylko żywe jednostki poszerzają front!)
+          if (!isDestroyed && side) {
+            if (!activePositionsBySide[side.id]) activePositionsBySide[side.id] = [];
+            activePositionsBySide[side.id].push([currentState.longitude, currentState.latitude]); // Turf wymaga [lng, lat]
+          }
+
+          // Renderowanie Markera
+          const color = side ? side.color : '#ffffff';
+          let classes = 'tactical-marker w-4 h-4';
+          if (isDestroyed) classes += ' tactical-marker-destroyed';
+          if (isExploding) classes += ' explosion-effect';
+          if (selectedUnitId === unit.id && !isDestroyed) classes += ' tactical-marker-selected';
+
+          const iconHtml = `<div class="${classes}" style="${!isDestroyed ? `background-color: ${color};` : ''}"></div>`;
+
+          if (!markers[unit.id]) {
+            const icon = L.divIcon({ className: '', html: iconHtml, iconSize: [16, 16], iconAnchor: [8, 8] });
+            markers[unit.id] = L.marker([currentState.latitude, currentState.longitude], { icon: icon }).addTo(map);
+            markers[unit.id].on('click', () => selectUnit(unit.id));
+          } else {
+            markers[unit.id].setLatLng([currentState.latitude, currentState.longitude]);
+            markers[unit.id].setIcon(L.divIcon({ className: '', html: iconHtml, iconSize: [16, 16], iconAnchor: [8, 8] }));
+          }
+        } else {
+          if (markers[unit.id]) { map.removeLayer(markers[unit.id]); delete markers[unit.id]; }
+        }
+      });
+
+      // GENEROWANIE LINII FRONTU (Terytoria) przy pomocy Turf.js
+      Object.entries(activePositionsBySide).forEach(([sideId, points]) => {
+        if (points.length >= 3) { // Convex Hull potrzebuje min. 3 punktów, by stworzyć obszar
+          const side = dataCache.sides.find(s => s.id === sideId);
+          // Tworzymy otoczkę wypukłą obejmującą wszystkie jednostki strony
+          const hull = turf.convex(turf.featureCollection(points.map(p => turf.point(p))));
+          
+          if (hull) {
+            L.geoJSON(hull, {
+              style: { 
+                color: side.color, 
+                fillColor: side.color, 
+                fillOpacity: 0.15, 
+                weight: 2, 
+                dashArray: '5, 10' // Przerywana militarna linia terytorium
+              }
+            }).addTo(territoryLayer);
           }
         }
       });
 
-      // Zaktualizuj panel uboczny i linie, jeśli coś jest zaznaczone
-      if (selectedUnitId) {
-        updateSidePanel();
-      }
+      if (selectedUnitId) updateSidePanel();
     }
 
-    // 6. Logika kliknięcia w jednostkę
     function selectUnit(id) {
       selectedUnitId = id;
-      
-      // Resetowanie stylów wszystkich markerów
-      Object.values(markers).forEach(m => {
-        const div = m.getElement().querySelector('.tactical-marker');
-        if (div) div.classList.remove('tactical-marker-selected');
-      });
-
-      // Zaznaczenie wybranego
-      if (markers[id]) {
-        const div = markers[id].getElement().querySelector('.tactical-marker');
-        if (div) div.classList.add('tactical-marker-selected');
-      }
-
-      updateSidePanel();
+      updateVisuals(); // Przerysuje markery by dodać obwódkę
     }
 
-    // 7. Renderowanie panelu bocznego
     function updateSidePanel() {
       const panel = document.getElementById('panel-content');
       const unit = dataCache.units.find(u => u.id === selectedUnitId);
       const side = dataCache.sides.find(s => s.id === unit.side_id);
       
-      // Aktualna pozycja z osi czasu
-      const currentPos = dataCache.positions
-        .filter(p => p.unit_id === selectedUnitId && new Date(p.recorded_at).getTime() <= currentTimeMs)
-        .sort((a, b) => new Date(b.recorded_at) - new Date(a.recorded_at))[0];
+      const destructionEvent = dataCache.events.find(e => 
+          e.unit_id === unit.id && 
+          (e.event_type === 'destroyed' || e.event_type === 'eliminated') &&
+          new Date(e.occurred_at).getTime() <= currentTimeMs
+      );
 
-      // Aktywny rozkaz
+      // Skąd wziąć dane – z obecnego czasu czy z momentu zniszczenia?
+      const checkTime = destructionEvent ? new Date(destructionEvent.occurred_at).getTime() : currentTimeMs;
+      const currentPos = getInterpolatedState(selectedUnitId, checkTime);
+
       const activeOrder = dataCache.orders.find(o => {
         const validFrom = new Date(o.valid_from).getTime();
         const validUntil = o.valid_until ? new Date(o.valid_until).getTime() : Infinity;
         return o.unit_id === selectedUnitId && currentTimeMs >= validFrom && currentTimeMs <= validUntil;
       });
 
-      // Rysowanie wektora (linii) do celu rozkazu
       if (targetLine) map.removeLayer(targetLine);
-      if (activeOrder && activeOrder.target_latitude && currentPos) {
+      if (activeOrder && activeOrder.target_latitude && currentPos && !destructionEvent) {
         targetLine = L.polyline(
           [[currentPos.latitude, currentPos.longitude], [activeOrder.target_latitude, activeOrder.target_longitude]], 
           { color: side.color, weight: 2, dashArray: '5, 10', opacity: 0.8 }
         ).addTo(map);
       }
 
-      // Generowanie HTML Panelu
       panel.innerHTML = `
         <div class="flex justify-between items-start mb-4 border-b border-tactical-700 pb-3">
           <span class="text-[10px] uppercase font-bold px-2 py-1 rounded text-white" style="background-color: ${side ? side.color : 'gray'}">
@@ -356,31 +415,39 @@ function setupMap() {
           <button onclick="closePanel()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-times"></i></button>
         </div>
         
-        <h2 class="text-2xl font-bold text-white mb-1">${unit.name}</h2>
+        <h2 class="text-2xl font-bold text-white mb-1 ${destructionEvent ? 'line-through text-slate-500' : ''}">${unit.name}</h2>
         <p class="text-sm text-slate-400 mb-6">Typ: ${unit.unit_type || 'Nieokreślony'} <span class="uppercase border border-slate-600 px-1 ml-2 text-[10px]">${unit.symbol || ''}</span></p>
         
-        <div class="grid grid-cols-2 gap-3 mt-4 text-sm mb-6">
-          <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
-            <span class="block text-slate-500 text-xs mb-1">Stan (Siła)</span>
-            <span class="font-bold text-white text-lg">${currentPos ? (currentPos.strength || 'Brak danych') : '-'}</span>
+        ${destructionEvent ? `
+          <div class="bg-red-900/20 border border-red-500/50 p-4 rounded mb-6 text-center">
+            <i class="fa-solid fa-skull-crossbones text-2xl text-red-500 mb-2"></i>
+            <p class="text-red-400 font-bold text-sm uppercase">Jednostka zniszczona</p>
+            <p class="text-xs text-slate-400 mt-1">Stracona: ${formatDateTime(new Date(destructionEvent.occurred_at).getTime())}</p>
           </div>
-          <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
-            <span class="block text-slate-500 text-xs mb-1">Kierunek</span>
-            <span class="font-bold text-white text-lg">${currentPos && currentPos.heading ? currentPos.heading + '&deg;' : '-'}</span>
+        ` : `
+          <div class="grid grid-cols-2 gap-3 mt-4 text-sm mb-6">
+            <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
+              <span class="block text-slate-500 text-xs mb-1">Stan (Siła)</span>
+              <span class="font-bold text-white text-lg">${currentPos ? (currentPos.strength || 'Brak') : '-'}</span>
+            </div>
+            <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
+              <span class="block text-slate-500 text-xs mb-1">Kierunek</span>
+              <span class="font-bold text-white text-lg">${currentPos && currentPos.heading ? currentPos.heading + '&deg;' : '-'}</span>
+            </div>
           </div>
-        </div>
+        `}
 
         <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Aktywne rozkazy</h3>
-        ${activeOrder ? `
+        ${activeOrder && !destructionEvent ? `
           <div class="bg-tactical-900 border border-l-4 border-tactical-700 rounded p-4 shadow-md" style="border-left-color: ${side.color}">
             <div class="flex justify-between text-xs text-slate-400 mb-2">
               <span class="uppercase font-bold text-white">${activeOrder.order_type}</span>
             </div>
-            <p class="text-slate-300 text-sm leading-relaxed">${activeOrder.description}</p>${activeOrder.target_latitude ? `<p class="text-xs text-tactical-accent mt-3"><i class="fa-solid fa-location-crosshairs"></i> Cel namierzony na mapie</p>` : ''}
+            <p class="text-slate-300 text-sm leading-relaxed">${activeOrder.description}</p>
           </div>
         ` : `
           <div class="text-slate-500 text-sm italic border border-dashed border-tactical-700 p-4 rounded text-center">
-            Jednostka nie wykonuje aktualnie żadnych rozkazów lub czeka na dyspozycje.
+            Brak aktywnych rozkazów.
           </div>
         `}
       `;
@@ -390,23 +457,18 @@ function setupMap() {
       selectedUnitId = null;
       if (targetLine) map.removeLayer(targetLine);
       updateVisuals();
-      
-      const panel = document.getElementById('panel-content');
-      panel.innerHTML = `
+      document.getElementById('panel-content').innerHTML = `
         <div class="text-center text-slate-500 mt-10">
           <i class="fa-solid fa-crosshairs text-4xl mb-4 text-tactical-700"></i>
           <p>Kliknij jednostkę na mapie, aby odczytać jej dane i rozkazy.</p>
-        </div>
-      `;
+        </div>`;
     }
 
-    // Narzędzie do formatowania daty z czasem
     function formatDateTime(ms) {
       const d = new Date(ms);
       return d.toLocaleDateString('pl-PL') + ' ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
     }
 
-    // Uruchom na starcie
     window.addEventListener('DOMContentLoaded', init);
   </script>
 </body>
