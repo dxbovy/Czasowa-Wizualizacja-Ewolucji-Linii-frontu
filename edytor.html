@@ -25,10 +25,30 @@
   <style>
     body { margin: 0; padding: 0; overflow: hidden; }
     .leaflet-tile { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
-    .leaflet-control-zoom { border: none !important; }
-    .leaflet-control-zoom a { background-color: #181920 !important; color: #10b981 !important; border-color: #262730 !important; }
-    #icon-modal { display: none; }
     .leaflet-tooltip { transition: opacity 0.2s; }
+    
+    /* OVERRIDE: Mroczne Przyciski Narzędzi (Geoman & Leaflet) */
+    .leaflet-bar { border: none !important; box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important; }
+    .leaflet-bar a, .leaflet-bar a:hover {
+        background-color: #181920 !important;
+        color: #10b981 !important;
+        border: 1px solid #262730 !important;
+    }
+    .leaflet-pm-toolbar .button-container.active a {
+        background-color: #262730 !important;
+    }
+    .leaflet-pm-icon-marker, .leaflet-pm-icon-polygon, .leaflet-pm-icon-line, .leaflet-pm-icon-cut, .leaflet-pm-icon-edit, .leaflet-pm-icon-delete, .leaflet-pm-icon-drag {
+        filter: invert(0.8) sepia(1) hue-rotate(100deg) saturate(5) brightness(1.2) !important;
+    }
+    .leaflet-pm-actions-container a {
+        background-color: #181920 !important;
+        color: #94a3b8 !important;
+        border: 1px solid #262730 !important;
+    }
+    .leaflet-pm-actions-container a:hover {
+        background-color: #3b3d4a !important;
+        color: #fff !important;
+    }
   </style>
 </head>
 <body class="bg-tactical-950 text-slate-300 font-sans h-screen flex flex-col">
@@ -50,7 +70,7 @@
   </header>
 
   <div class="flex flex-1 relative">
-    <!-- Panel boczny: Frakcje i Narzędzia -->
+    <!-- Panel boczny -->
     <aside class="w-64 bg-tactical-950 border-r border-tactical-700 flex flex-col shrink-0 z-10 shadow-2xl relative">
       <div class="p-4 flex-1 overflow-y-auto">
         <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Zarządzanie Siłami</h3>
@@ -98,7 +118,6 @@
         <button id="czas-dzien-wstecz" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">-1d</button>
         <button id="czas-wstecz" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">-1h</button>
       </div>
-      
       <div class="flex items-center gap-4">
         <button id="czas-play" class="px-4 py-1.5 bg-tactical-800 border border-tactical-600 hover:border-tactical-accent text-white text-xs font-bold rounded-full transition-colors flex gap-2 items-center">
           <i class="fa-solid fa-play"></i> Odtwórz
@@ -106,7 +125,6 @@
         <strong id="czas-etykieta" class="text-sm font-mono text-tactical-accent"></strong>
         <button id="czas-usun-klatke" class="text-xs px-2 py-1 text-red-400 hover:bg-red-900/30 rounded" title="Usuń klatkę dla tej godziny"><i class="fa-solid fa-trash"></i></button>
       </div>
-
       <div class="flex gap-2">
         <button id="czas-dalej" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">+1h</button>
         <button id="czas-dzien-dalej" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">+1d</button>
@@ -118,20 +136,66 @@
     </div>
   </footer>
 
-  <!-- Modal Ikonek Tailwind -->
-  <div id="icon-modal" class="fixed inset-0 bg-black/70 z-[9999] flex justify-center items-center backdrop-blur-sm">
-    <div class="bg-tactical-900 border border-tactical-700 rounded-xl p-6 shadow-2xl max-w-sm w-full">
+  <!-- MODAL: Nowy Marker (Typy Jednostek) -->
+  <div id="icon-modal" class="fixed inset-0 bg-black/70 z-[9999] hidden justify-center items-center backdrop-blur-sm">
+    <div class="bg-tactical-900 border border-tactical-700 rounded-xl p-6 shadow-2xl max-w-md w-full max-h-screen overflow-y-auto">
       <h3 class="text-lg font-bold text-white mb-4 border-b border-tactical-700 pb-2">Wybierz typ jednostki</h3>
-      <div class="grid grid-cols-2 gap-3 mb-4">
-        <button onclick="window.wybierzIkone('czolg')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">🛡️</span> Czołg</button>
-        <button onclick="window.wybierzIkone('piechota')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">🪖</span> Piechota</button>
-        <button onclick="window.wybierzIkone('zmech')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">⚙️</span> Zmechanizowana</button>
-        <button onclick="window.wybierzIkone('kwadrat')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">⬛</span> Sztab / Kwadrat</button>
-        <button onclick="window.wybierzIkone('kolo')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm col-span-2"><span class="text-lg">🔴</span> Inne / Koło</button>
+      <div class="grid grid-cols-2 gap-3 mb-6">
+        <button onclick="window.wybierzIkone('army')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm text-slate-300 flex items-center justify-center gap-2"><i class="fa-solid fa-shield-halved text-tactical-accent w-4"></i> Armia</button>
+        <button onclick="window.wybierzIkone('cavalry')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm text-slate-300 flex items-center justify-center gap-2"><i class="fa-solid fa-horse-head text-tactical-accent w-4"></i> Kawaleria</button>
+        <button onclick="window.wybierzIkone('corps')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm text-slate-300 flex items-center justify-center gap-2"><i class="fa-solid fa-cubes text-tactical-accent w-4"></i> Korpus</button>
+        <button onclick="window.wybierzIkone('fortress')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm text-slate-300 flex items-center justify-center gap-2"><i class="fa-brands fa-fort-awesome text-tactical-accent w-4"></i> Twierdza</button>
+        <button onclick="window.wybierzIkone('front')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm text-slate-300 flex items-center justify-center gap-2"><i class="fa-solid fa-flag text-tactical-accent w-4"></i> Front</button>
+        <button onclick="window.wybierzIkone('garrison')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm text-slate-300 flex items-center justify-center gap-2"><i class="fa-solid fa-building-shield text-tactical-accent w-4"></i> Garnizon</button>
+        <button onclick="window.wybierzIkone('group')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm text-slate-300 flex items-center justify-center gap-2"><i class="fa-solid fa-people-group text-tactical-accent w-4"></i> Grupa</button>
+        <button onclick="window.wybierzIkone('naval')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm text-slate-300 flex items-center justify-center gap-2"><i class="fa-solid fa-anchor text-tactical-accent w-4"></i> Marynarka</button>
       </div>
-      <button onclick="window.anulujDodawanie()" class="w-full py-2 bg-red-900/30 hover:bg-red-600 text-red-200 hover:text-white border border-red-800 rounded transition-colors text-sm font-bold">
-        ❌ Anuluj
-      </button>
+
+      <h3 class="text-lg font-bold text-white mb-4 border-b border-tactical-700 pb-2 flex items-center gap-2">
+         <i class="fa-solid fa-fire text-red-500"></i> Znaczniki Operacyjne
+      </h3>
+      <div class="mb-4">
+        <button onclick="window.wybierzIkone('battle')" class="w-full bg-red-900/30 hover:bg-red-800 border border-red-700 p-3 rounded text-sm text-red-200 font-bold flex items-center justify-center gap-2 shadow-[0_0_10px_rgba(239,68,68,0.2)] transition-colors">
+          <i class="fa-solid fa-explosion text-lg"></i> Oznacz Bitwę
+        </button>
+      </div>
+
+      <button onclick="window.anulujDodawanie()" class="w-full py-2 bg-tactical-800 hover:bg-tactical-700 text-slate-400 hover:text-white border border-tactical-600 rounded transition-colors text-sm font-bold mt-2">Anuluj</button>
+    </div>
+  </div>
+
+  <!-- MODAL: Zarządzanie Jednostką / Rozkazy -->
+  <div id="unit-context-modal" class="fixed inset-0 bg-black/70 z-[9999] hidden justify-center items-center backdrop-blur-sm">
+    <div class="bg-tactical-900 border border-tactical-700 rounded-xl p-6 shadow-2xl max-w-sm w-full relative">
+        <h3 class="text-lg font-bold text-white mb-4 border-b border-tactical-700 pb-2">Centrala Dowodzenia</h3>
+        
+        <label class="text-xs text-slate-400 block mb-1 uppercase font-bold tracking-wider">Nazwa / Kryptonim</label>
+        <input type="text" id="uc-name" class="w-full bg-tactical-800 border border-tactical-600 rounded p-2 text-white mb-5 focus:outline-none focus:border-tactical-accent">
+        
+        <div class="bg-tactical-950 p-4 rounded border border-tactical-700 mb-5 relative">
+            <div class="absolute -top-3 left-3 bg-tactical-950 px-2 text-xs font-bold text-tactical-accent flex items-center gap-1">
+                <i class="fa-solid fa-file-signature"></i> Sztab
+            </div>
+            
+            <label class="text-xs text-slate-400 block mb-1 mt-2">Czas rozkazu:</label>
+            <div id="uc-time" class="text-sm font-mono text-white bg-tactical-800 px-2 py-1 rounded border border-tactical-700 mb-3 inline-block"></div>
+            
+            <select id="uc-type" class="w-full bg-tactical-800 border border-tactical-600 rounded p-2 text-white mb-3 text-sm focus:outline-none focus:border-tactical-accent">
+                <option value="move">Marsz / Przegrupowanie</option>
+                <option value="attack">Atak</option>
+                <option value="defend">Obrona</option>
+                <option value="retreat">Odwrót</option>
+                <option value="support">Wsparcie</option>
+            </select>
+            
+            <textarea id="uc-desc" rows="2" placeholder="Treść rozkazu taktycznego..." class="w-full bg-tactical-800 border border-tactical-600 rounded p-2 text-white mb-3 text-sm focus:outline-none focus:border-tactical-accent"></textarea>
+            
+        </div>
+
+        <div class="flex gap-3 mt-2">
+            <button onclick="zapiszOpcjeJednostki()" class="flex-1 py-2.5 bg-tactical-accent hover:bg-tactical-accentHover text-white rounded font-bold shadow-[0_0_10px_rgba(16,185,129,0.2)] transition-colors">Wykonaj</button>
+            <button onclick="zamknijOpcjeJednostki()" class="flex-1 py-2.5 bg-tactical-800 hover:bg-tactical-700 text-slate-300 rounded font-bold border border-tactical-600 transition-colors">Anuluj</button>
+        </div>
     </div>
   </div>
 
@@ -179,14 +243,13 @@
     let trybMalowania = false;
     let nazwyPermanentne = false; 
     let klatki = {}; 
+    let lokalneRozkazy = []; // Przechowuje rozkazy dla jednostek z obecnej sesji
 
-    // Gwarantujemy, że domyślne frakcje dostaną od razu poprawne UUID z poziomu JS
     const idPL = crypto.randomUUID();
     const idDE = crypto.randomUUID();
     const idSU = crypto.randomUUID();
     const idNeutral = crypto.randomUUID();
 
-    // Kluczem w słowniku JEST UUID! (Żadnych skrótów typu "pl")
     let frakcje = {
         [idPL]: { nazwa: 'Polska', kolor: '#e63946' },
         [idDE]: { nazwa: 'Niemcy', kolor: '#495057' },
@@ -195,7 +258,7 @@
     };
     let aktywnaFrakcja = idPL;
 
-    // 4. ŁADOWANIE DANYCH Z BAZY (Z REKONSTRUKCJĄ)
+    // 4. ŁADOWANIE DANYCH Z BAZY
     async function loadBattleData() {
       const { data: b } = await db.from('campaigns').select('*').eq('id', BATTLE_ID).single();
       if(b) {
@@ -207,12 +270,10 @@
         document.getElementById('czas-suwak').max = Math.round((CZAS_KONIEC - CZAS_START) / GODZINA);
       }
 
-      // Pobieranie nadpisanych/istniejących frakcji (jeśli są)
       const { data: s } = await db.from('sides').select('*').eq('campaigns_id', BATTLE_ID);
       if(s && s.length > 0) {
-        frakcje = {}; // Czyścimy domyślne - ufamy bazie
+        frakcje = {}; 
         s.forEach(side => {
-           // Bezpośrednio używamy prawidłowego UUID jako klucza!
            frakcje[side.id] = { nazwa: side.name, kolor: side.color };
         });
         aktywnaFrakcja = Object.keys(frakcje)[0];
@@ -243,14 +304,31 @@
                       type: "Feature",
                       properties: {
                           name: unit.name,
-                          frakcja: unit.side_id, // side_id to bezpośrednio prawidłowe UUID
+                          frakcja: unit.side_id,
                           iconType: unit.symbol !== 'none' ? unit.symbol : unit.unit_type
                       },
-                      geometry: {
-                          type: "Point",
-                          coordinates: [pos.longitude, pos.latitude]
-                      }
+                      geometry: { type: "Point", coordinates: [pos.longitude, pos.latitude] }
                   });
+              });
+          }
+
+          // Wczytywanie Rozkazów z Bazy do pamięci podręcznej
+          const { data: ordData } = await db.from('orders').select('*').in('unit_id', unitIds);
+          if (ordData && ordData.length > 0) {
+              ordData.forEach(o => {
+                  const unit = unitsData.find(u => u.id === o.unit_id);
+                  if (unit) {
+                      lokalneRozkazy.push({
+                          unitName: unit.name,
+                          issued_at: o.issued_at,
+                          valid_from: o.valid_from,
+                          valid_until: o.valid_until,
+                          order_type: o.order_type,
+                          description: o.description,
+                          target_latitude: o.target_latitude,
+                          target_longitude: o.target_longitude
+                      });
+                  }
               });
           }
       }
@@ -261,23 +339,19 @@
           try {
               const zapis = JSON.parse(localStorage.getItem('kampania-autozapis-'+BATTLE_ID));
               if (zapis?.klatki) { klatki = zapis.klatki; Object.assign(frakcje, zapis.frakcje || {}); }
+              if (zapis?.rozkazy) { lokalneRozkazy = zapis.rozkazy; }
           } catch(err) {}
       }
 
-      // Niezwykle ważna funkcja weryfikująca zepsute stare zapisy ("pl", "de")
       naprawRelacjeFrakcji();
-
       odswiezListeFrakcji();
       odswiezZnaczniki();
       ustawCzas(CZAS_START);
     }
 
-    // MAPOWANIE: Automatycznie zamienia stare skróty "pl" / "de" na poprawne UUID z nowej puli
     function naprawRelacjeFrakcji() {
         const nameToId = {};
-        for (const [id, f] of Object.entries(frakcje)) {
-            nameToId[f.nazwa.toLowerCase()] = id;
-        }
+        for (const [id, f] of Object.entries(frakcje)) { nameToId[f.nazwa.toLowerCase()] = id; }
         const oldMap = { 'pl': 'polska', 'de': 'niemcy', 'su': 'zsrr', 'neutral': 'neutralne' };
         
         for (const stan of Object.values(klatki)) {
@@ -285,20 +359,15 @@
             for (const feature of stan.features) {
                 let fr = feature.properties?.frakcja;
                 if (!fr) continue;
-                
-                // Jeśli klucz (fr) nie znajduje się w obecnym rejestrze UUID
                 if (!frakcje[fr]) {
                     let expectedName = oldMap[fr] ? oldMap[fr] : null;
                     if (expectedName && nameToId[expectedName]) {
                         feature.properties.frakcja = nameToId[expectedName];
-                    } else {
-                        feature.properties.frakcja = Object.keys(frakcje)[0]; // Ratunkowe przypięcie
-                    }
+                    } else { feature.properties.frakcja = Object.keys(frakcje)[0]; }
                 }
             }
         }
     }
-
     loadBattleData();
 
     // 5. Narzędzia Mapy
@@ -316,7 +385,6 @@
     function odtworzStan(geoJsonData) {
       map.pm.disableDraw();
       map.pm.getGeomanLayers().forEach(layer => layer.remove());
-      
       if (!geoJsonData || !geoJsonData.features || geoJsonData.features.length === 0) return;
 
       const bufferLayer = L.geoJSON(geoJsonData, {
@@ -334,28 +402,79 @@
 
           const props = layer.feature?.properties;
           
-          if (props?.isArrow && layer instanceof L.Polyline) {
-              stylujStrzalke(layer, props.color);
-          }
-          if (props?.frakcja && !(layer instanceof L.Marker)) {
-              zastosujFrakcje(layer, props.frakcja);
-          }
-          if (layer instanceof L.Marker && props?.iconType) {
-              zastosujIkone(layer, props.iconType, props.iconUrl);
-          }
+          if (props?.isArrow && layer instanceof L.Polyline) stylujStrzalke(layer, props.color);
+          if (props?.frakcja && !(layer instanceof L.Marker)) zastosujFrakcje(layer, props.frakcja);
+          if (layer instanceof L.Marker && props?.iconType) zastosujIkone(layer, props.iconType, props.iconUrl);
           
           const nazwa = props?.name || props?.NAME || props?.SUBJECTO;
           if (nazwa) {
               layer.bindTooltip(nazwa, { 
-                  permanent: nazwyPermanentne, 
-                  sticky: !nazwyPermanentne, 
-                  direction: 'center',
+                  permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center',
                   className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
               });
           }
-          
           dodajEdycjeIKlikanie(layer);
       });
+    }
+
+    // ROZKAZY: Logika modalnego okna edycji
+    let edytowanaJednostka = null;
+    let tymczasowyCelRozkazu = null;
+
+    function otworzOpcjeJednostki(layer) {
+        edytowanaJednostka = layer;
+        tymczasowyCelRozkazu = null;
+        document.getElementById('uc-name').value = layer.feature.properties.name || "";
+        document.getElementById('uc-time').innerText = new Date(czasTeraz).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
+        document.getElementById('uc-desc').value = "";
+        document.getElementById('uc-target-info').innerText = "Brak celu";
+        
+        document.getElementById('unit-context-modal').style.display = 'flex';
+    }
+
+    function zamknijOpcjeJednostki() {
+        document.getElementById('unit-context-modal').style.display = 'none';
+        edytowanaJednostka = null;
+    }
+
+    function wybierzCelRozkazu() {
+        document.getElementById('unit-context-modal').style.display = 'none';
+        alert("Wskaż koordynaty na mapie (kliknij), aby ustalić cel rozkazu.");
+        
+        // Złapanie pierwszego kliknięcia myszą na mapę
+        map.once('click', (e) => {
+            tymczasowyCelRozkazu = e.latlng;
+            document.getElementById('uc-target-info').innerHTML = `<span class="text-tactical-accent font-bold">Zapisano CEL:</span> ${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}`;
+            document.getElementById('unit-context-modal').style.display = 'flex'; // Przywrócenie okienka
+        });
+    }
+
+    function zapiszOpcjeJednostki() {
+        if(!edytowanaJednostka) return;
+        
+        const nowaNazwa = document.getElementById('uc-name').value;
+        edytowanaJednostka.feature.properties.name = nowaNazwa;
+        
+        edytowanaJednostka.unbindTooltip();
+        edytowanaJednostka.bindTooltip(nowaNazwa, { 
+            permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center',
+            className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
+        });
+
+        const desc = document.getElementById('uc-desc').value;
+        if(desc.trim() !== "") {
+            lokalneRozkazy.push({
+                unitName: nowaNazwa,
+                order_type: document.getElementById('uc-type').value,
+                description: desc,
+                issued_at: new Date(czasTeraz).toISOString(),
+                valid_from: new Date(czasTeraz).toISOString(),
+                target_latitude: tymczasowyCelRozkazu ? tymczasowyCelRozkazu.lat : null,
+                target_longitude: tymczasowyCelRozkazu ? tymczasowyCelRozkazu.lng : null
+            });
+        }
+        zapiszStan();
+        zamknijOpcjeJednostki();
     }
 
     function dodajEdycjeIKlikanie(layer) {
@@ -367,41 +486,53 @@
           
           if (trybMalowania) {
               zastosujFrakcje(layer, aktywnaFrakcja);
-              zapiszStan();
-              return;
+              zapiszStan(); return;
           }
           if (e.originalEvent.shiftKey) {
               layer.setStyle({ color: '#ff0000', fillColor: '#ff0000' });
               wybraneDoAneksji.push(layer);
               if (wybraneDoAneksji.length === 2) {
-                  wykonajAneksje(wybraneDoAneksji[0], wybraneDoAneksji[1]);
-                  wybraneDoAneksji = [];
+                  wykonajAneksje(wybraneDoAneksji[0], wybraneDoAneksji[1]); wybraneDoAneksji = [];
               }
-          } else {
-              layer.pm.toggleEdit();
-          }
+          } else { layer.pm.toggleEdit(); }
       });
 
+      // Prawy klik (Opcje / Rozkazy)
       layer.on('contextmenu', (e) => {
           if (map.pm.globalDrawModeEnabled()) return;
           L.DomEvent.stopPropagation(e);
           
           const props = layer.feature?.properties || {};
-          const obecnaNazwa = props?.name || props?.NAME || props?.SUBJECTO || "";
-          const nowaNazwa = prompt("Podaj nazwę dla tego obiektu:", obecnaNazwa);
+          const isBattle = props?.iconType === 'battle';
+          
+          if (isBattle) {
+              const obecnaNazwa = props?.name || props?.NAME || props?.SUBJECTO || "";
+              const nowaNazwa = prompt("Zmień nazwę bitwy:", obecnaNazwa);
 
-          if (nowaNazwa !== null) {
-              layer.feature = layer.feature || { type: "Feature", properties: {} };
-              layer.feature.properties.name = nowaNazwa;
-              
-              layer.unbindTooltip();
-              layer.bindTooltip(nowaNazwa, { 
-                  permanent: nazwyPermanentne, 
-                  sticky: !nazwyPermanentne, 
-                  direction: 'center',
-                  className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
-              });
-              zapiszStan();
+              if (nowaNazwa !== null) {
+                  layer.feature = layer.feature || { type: "Feature", properties: {} };
+                  layer.feature.properties.name = nowaNazwa;
+                  const desc = prompt("Zmień opis bitwy:", props.description || "");
+                  const res = prompt("Zmień wynik bitwy:", props.result || "");
+                  layer.feature.properties.description = desc || "";
+                  layer.feature.properties.result = res || "";
+                  
+                  layer.unbindTooltip();
+                  layer.bindTooltip(nowaNazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
+                  zapiszStan();
+              }
+          } else if (layer instanceof L.Marker) {
+              // Zwykła Jednostka (otwórz modal rozkazów)
+              otworzOpcjeJednostki(layer);
+          } else {
+              // Granice / Linie
+              const nowaNazwa = prompt("Zmień nazwę terytorium/linii:", props?.name || "");
+              if (nowaNazwa !== null) {
+                  layer.feature.properties.name = nowaNazwa;
+                  layer.unbindTooltip();
+                  layer.bindTooltip(nowaNazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
+                  zapiszStan();
+              }
           }
       });
     }
@@ -418,28 +549,18 @@
                   nk.options.pmIgnore = false;
                   L.PM.reInitLayer(nk);
                   dodajEdycjeIKlikanie(nk);
-                  
                   const nazwa = prompt("Aneksja zakończona! Podaj nazwę nowego terytorium:");
                   nk.feature = nk.feature || { type: "Feature", properties: {} };
                   if (fid) zastosujFrakcje(nk, fid);
                   if (nazwa) {
                       nk.feature.properties.name = nazwa;
-                      nk.bindTooltip(nazwa, { 
-                          permanent: nazwyPermanentne, 
-                          sticky: !nazwyPermanentne, 
-                          direction: 'center',
-                          className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
-                      });
+                      nk.bindTooltip(nazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
                   }
               });
               zapiszStan();
           }
       } catch (err) {
-          alert("Błąd aneksji.");
-          [w1, w2].forEach(w => {
-              const id = w.feature?.properties?.frakcja;
-              id ? zastosujFrakcje(w, id) : w.setStyle({ color: '#3388ff' });
-          });
+          [w1, w2].forEach(w => { const id = w.feature?.properties?.frakcja; id ? zastosujFrakcje(w, id) : w.setStyle({ color: '#3388ff' }); });
       }
     }
 
@@ -454,9 +575,7 @@
       if (layer._odswiezGrot) layer.off(ZDARZENIA_EDYCJI, layer._odswiezGrot);
       if (layer._usunGrot) layer.off('remove', layer._usunGrot);
 
-      layer._grot = L.polylineDecorator(layer, {
-          patterns: [{ offset: '100%', repeat: 0, symbol: L.Symbol.arrowHead({ pixelSize: 18, polygon: true, pathOptions: { color: kolor, fillColor: kolor, fillOpacity: 1, weight: 2, pmIgnore: true } }) }]
-      }).addTo(map);
+      layer._grot = L.polylineDecorator(layer, { patterns: [{ offset: '100%', repeat: 0, symbol: L.Symbol.arrowHead({ pixelSize: 18, polygon: true, pathOptions: { color: kolor, fillColor: kolor, fillOpacity: 1, weight: 2, pmIgnore: true } }) }] }).addTo(map);
       layer._odswiezGrot = () => layer._grot && layer._grot.setPaths(layer.getLatLngs());
       layer._usunGrot = () => { if (layer._grot) map.removeLayer(layer._grot); };
       layer.on(ZDARZENIA_EDYCJI, layer._odswiezGrot);
@@ -480,7 +599,6 @@
       }
     }
 
-    // 6. Wydarzenia Geoman i Tworzenie Markerów
     let oczekujacyMarker = null;
     map.on('pm:create', (e) => {
       const layer = e.layer;
@@ -491,17 +609,10 @@
           oczekujacyMarker = layer;
           document.getElementById('icon-modal').style.display = 'flex';
       } else if (e.shape === 'Line') {
-          if (trybRysowaniaStrzalki) {
-              layer.feature.properties.isArrow = true;
-              trybRysowaniaStrzalki = false;
-          }
-          zastosujFrakcje(layer, aktywnaFrakcja);
-          dodajEdycjeIKlikanie(layer);
-          zapiszStan();
+          if (trybRysowaniaStrzalki) { layer.feature.properties.isArrow = true; trybRysowaniaStrzalki = false; }
+          zastosujFrakcje(layer, aktywnaFrakcja); dodajEdycjeIKlikanie(layer); zapiszStan();
       } else {
-          zastosujFrakcje(layer, aktywnaFrakcja);
-          dodajEdycjeIKlikanie(layer);
-          zapiszStan();
+          zastosujFrakcje(layer, aktywnaFrakcja); dodajEdycjeIKlikanie(layer); zapiszStan();
       }
     });
 
@@ -513,19 +624,34 @@
       layer.feature.properties.iconType = typ;
       if (url) layer.feature.properties.iconUrl = url;
 
+      let iconClass = 'fa-solid fa-location-dot';
+      let size = 32; let fontSize = 14; let offset = -16; let extraStyles = "";
+
+      switch(typ) {
+          case 'army': iconClass = 'fa-solid fa-shield-halved'; break;
+          case 'cavalry': iconClass = 'fa-solid fa-horse-head'; break;
+          case 'corps': iconClass = 'fa-solid fa-cubes'; break;
+          case 'fortress': iconClass = 'fa-brands fa-fort-awesome'; break;
+          case 'front': iconClass = 'fa-solid fa-flag'; break;
+          case 'garrison': iconClass = 'fa-solid fa-building-shield'; break;
+          case 'group': iconClass = 'fa-solid fa-people-group'; break;
+          case 'naval': iconClass = 'fa-solid fa-anchor'; break;
+          case 'battle': iconClass = 'fa-solid fa-explosion'; size = 50; fontSize = 24; offset = -25; break;
+      }
+
       let icon;
       if (typ === 'custom') {
           icon = L.icon({ iconUrl: url, iconSize: [40, 40], iconAnchor: [20, 20] });
       } else {
-          let emoji = '📍';
-          if (typ === 'czolg') emoji = '🛡️';
-          if (typ === 'piechota') emoji = '🪖';
-          if (typ === 'zmech') emoji = '⚙️';
-          if (typ === 'kwadrat') emoji = '⬛';
-          if (typ === 'kolo') emoji = '🔴';
-          const kolor = frakcje[layer.feature.properties.frakcja]?.kolor || '#888';
+          let kolor = frakcje[layer.feature.properties.frakcja]?.kolor || '#888';
+          let textColor = "white";
+          
+          if (typ === 'battle') {
+              extraStyles = `box-shadow: 0 0 20px ${kolor}, inset 0 0 10px rgba(0,0,0,0.5);`; textColor = "#fca5a5"; 
+          }
+
           icon = L.divIcon({
-              html: `<div style="width:34px;height:34px;margin:-17px 0 0 -17px;display:flex;align-items:center;justify-content:center;font-size:18px;background:#262730;border:3px solid ${kolor};border-radius:50%;">${emoji}</div>`,
+              html: `<div style="width:${size}px;height:${size}px;margin:${offset}px 0 0 ${offset}px;display:flex;align-items:center;justify-content:center;font-size:${fontSize}px;background:#262730;border:3px solid ${kolor};border-radius:50%;color:${textColor};${extraStyles}"><i class="${iconClass}"></i></div>`,
               className: 'custom-div-icon shadow-lg'
           });
       }
@@ -534,15 +660,22 @@
 
     function zamknijModalIDokoncz() {
       document.getElementById('icon-modal').style.display = 'none';
-      const nazwa = prompt("Podaj nazwę dla tej jednostki:");
+      
+      const isBattle = oczekujacyMarker.feature.properties.iconType === 'battle';
+      const promptTxt = isBattle ? "Podaj Kryptonim / Nazwę Bitwy:" : "Podaj nazwę dla tej jednostki:";
+      const nazwa = prompt(promptTxt);
+      
       if (nazwa) {
           oczekujacyMarker.feature.properties.name = nazwa;
-          oczekujacyMarker.bindTooltip(nazwa, { 
-              permanent: nazwyPermanentne, 
-              sticky: !nazwyPermanentne, 
-              direction: 'center',
-              className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
-          });
+          
+          if (isBattle) {
+              const desc = prompt("Podaj krótki opis bitwy:");
+              const res = prompt("Podaj wynik bitwy (np. Zwycięstwo osi, Odwrót):");
+              oczekujacyMarker.feature.properties.description = desc || "";
+              oczekujacyMarker.feature.properties.result = res || "";
+          }
+
+          oczekujacyMarker.bindTooltip(nazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
       }
       dodajEdycjeIKlikanie(oczekujacyMarker);
       zapiszStan();
@@ -552,27 +685,16 @@
     map.on('pm:remove', () => zapiszStan());
     map.on('pm:cut', (e) => { e.layer.getLayers().forEach(nk => dodajEdycjeIKlikanie(nk)); zapiszStan(); });
     
-    document.getElementById('draw-arrow-btn').addEventListener('click', () => {
-      trybRysowaniaStrzalki = true; map.pm.enableDraw('Line', { snappable: false });
-    });
-
+    document.getElementById('draw-arrow-btn').addEventListener('click', () => { trybRysowaniaStrzalki = true; map.pm.enableDraw('Line', { snappable: false }); });
     document.getElementById('toggle-names-btn').addEventListener('click', () => {
         nazwyPermanentne = !nazwyPermanentne;
         const btn = document.getElementById('toggle-names-btn');
-        btn.classList.toggle('bg-tactical-accent', nazwyPermanentne);
-        btn.classList.toggle('border-tactical-accent', nazwyPermanentne);
+        btn.classList.toggle('bg-tactical-accent', nazwyPermanentne); btn.classList.toggle('border-tactical-accent', nazwyPermanentne);
         
         map.pm.getGeomanLayers().forEach(layer => {
-            const props = layer.feature?.properties;
-            const nazwa = props?.name || props?.NAME || props?.SUBJECTO;
+            const props = layer.feature?.properties; const nazwa = props?.name || props?.NAME || props?.SUBJECTO;
             if(nazwa) {
-                layer.unbindTooltip();
-                layer.bindTooltip(nazwa, { 
-                    permanent: nazwyPermanentne, 
-                    sticky: !nazwyPermanentne, 
-                    direction: 'center',
-                    className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
-                });
+                layer.unbindTooltip(); layer.bindTooltip(nazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
             }
         });
     });
@@ -601,7 +723,7 @@
     
     document.getElementById('dodaj-frakcje-btn').addEventListener('click', () => {
       const nazwa = prompt("Nazwa nowej frakcji:"); if (!nazwa) return;
-      const id = crypto.randomUUID(); // Nowe frakcje również dostają poprawne UUID od razu
+      const id = crypto.randomUUID(); 
       const losowy = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
       frakcje[id] = { nazwa, kolor: losowy }; aktywnaFrakcja = id;
       odswiezListeFrakcji(); autozapis();
@@ -630,7 +752,7 @@
       if (dokladna || !taSama) { klatki[czasTeraz] = stan; autozapis(); odswiezZnaczniki(); odswiezEtykiete(); }
     }
 
-    function autozapis() { try { localStorage.setItem('kampania-autozapis-'+BATTLE_ID, JSON.stringify({ frakcje, klatki })); } catch (e) {} }
+    function autozapis() { try { localStorage.setItem('kampania-autozapis-'+BATTLE_ID, JSON.stringify({ frakcje, klatki, rozkazy: lokalneRozkazy })); } catch (e) {} }
     
     function odswiezEtykiete() {
       const t = new Date(czasTeraz).toLocaleString('pl-PL', { timeZone: 'UTC', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -681,37 +803,30 @@
 
     // 9. Import / Export Local
     document.getElementById('export-btn').addEventListener('click', () => {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ format: "kampania-v2", frakcje, klatki }));
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ format: "kampania-v2", frakcje, klatki, rozkazy: lokalneRozkazy }));
       const a = document.createElement('a'); a.href = dataStr; a.download = `kampania_${BATTLE_ID}.json`; document.body.appendChild(a); a.click(); a.remove();
     });
     
     document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-input').click());
-    
     document.getElementById('import-input').addEventListener('change', (e) => {
       const file = e.target.files[0]; if (!file) return;
       const reader = new FileReader();
       reader.onload = (e) => {
           try {
               const d = JSON.parse(e.target.result);
-              
               if (d.frakcje || d.klatki) { 
                   if (d.frakcje) { Object.assign(frakcje, d.frakcje); odswiezListeFrakcji(); }
+                  if (d.rozkazy) { lokalneRozkazy = d.rozkazy; }
                   if (d.klatki) { klatki = d.klatki; naprawRelacjeFrakcji(); autozapis(); odswiezZnaczniki(); ustawCzas(czasTeraz); }
-              } 
-              else if (d.type === "FeatureCollection" || d.features) {
+              } else if (d.type === "FeatureCollection" || d.features) {
                   const obecne = map.pm.getGeomanLayers().map(l => l.toGeoJSON());
                   odtworzStan({ type: "FeatureCollection", features: [...obecne, ...d.features] });
                   zapiszStan();
-                  
-                  const tempLayer = L.geoJSON(d);
-                  map.fitBounds(tempLayer.getBounds());
+                  const tempLayer = L.geoJSON(d); map.fitBounds(tempLayer.getBounds());
               }
-          } catch(err) { 
-              alert("Niepoprawny plik JSON: " + err.message); 
-          }
+          } catch(err) { alert("Niepoprawny plik JSON: " + err.message); }
       };
-      reader.readAsText(file);
-      e.target.value = ''; 
+      reader.readAsText(file); e.target.value = ''; 
     });
 
     // 10. ZAPIS DO BAZY SUPABASE
@@ -720,50 +835,63 @@
       const btn = document.getElementById('export-db-btn');
       btn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> Wysyłanie..."; btn.classList.add("bg-yellow-600");
 
-      // Funkcja sprawdzająca czy klucz jest autentycznym UUID
       const isValidUUID = (uuid) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
 
       try {
-          // --- 1. KRYTYCZNA NAPRAWA: Oczyszczanie starych kluczy ("pl", "de") ---
           const czysteFrakcje = {};
           for (const [oldKey, f] of Object.entries(frakcje)) {
               let safeKey = oldKey;
-              
-              // Jeśli klucz z local storage to bzdura (np. "pl")
               if (!isValidUUID(safeKey)) {
-                  safeKey = crypto.randomUUID(); // Generujemy nowy, prawdziwy UUID
-                  
-                  // Ważne: Zmieniamy przypisanie do frakcji we wszystkich jednostkach na osi czasu!
+                  safeKey = crypto.randomUUID(); 
                   for (const stan of Object.values(klatki)) {
                       if (!stan.features) continue;
                       for (const feature of stan.features) {
-                          if (feature.properties && feature.properties.frakcja === oldKey) {
-                              feature.properties.frakcja = safeKey;
-                          }
+                          if (feature.properties && feature.properties.frakcja === oldKey) { feature.properties.frakcja = safeKey; }
                       }
                   }
               }
               czysteFrakcje[safeKey] = f;
           }
-          frakcje = czysteFrakcje; // Nadpisujemy zepsuty słownik tym naprawionym
-          odswiezListeFrakcji(); // Odświeżamy listę rozwijaną
+          frakcje = czysteFrakcje;
+          odswiezListeFrakcji();
 
-          // --- 2. ZAPIS FRAKCJI DO BAZY ---
           for (const [key, f] of Object.entries(frakcje)) {
-              const { error: sideErr } = await db.from('sides').upsert({ 
-                  id: key, 
-                  campaigns_id: BATTLE_ID, 
-                  name: f.nazwa, 
-                  color: f.kolor 
-              });
+              const { error: sideErr } = await db.from('sides').upsert({ id: key, campaigns_id: BATTLE_ID, name: f.nazwa, color: f.kolor });
               if (sideErr) throw new Error("Błąd zapisu frakcji: " + sideErr.message);
           }
 
+          const aktywneJednostki = new Set();
+          for (const stan of Object.values(klatki)) {
+              if (!stan.features) continue;
+              for (const feature of stan.features) {
+                  if (feature.geometry.type === 'Point' && feature.properties?.name && feature.properties?.iconType !== 'battle') {
+                      aktywneJednostki.add(feature.properties.name);
+                  }
+              }
+          }
+
+          const { data: dbUnits } = await db.from('units').select('id, name').eq('campaigns_id', BATTLE_ID);
+          const dbUnitIds = dbUnits ? dbUnits.map(u => u.id) : [];
+
+          if (dbUnitIds.length > 0) {
+              await db.from('unit_positions').delete().in('unit_id', dbUnitIds);
+              await db.from('orders').delete().in('unit_id', dbUnitIds);
+          }
+
+          if (dbUnits) {
+              const unitsToDelete = dbUnits.filter(u => !aktywneJednostki.has(u.name)).map(u => u.id);
+              if (unitsToDelete.length > 0) { await db.from('units').delete().in('id', unitsToDelete); }
+          }
+
           const unitsMap = new Map();
+          if (dbUnits) {
+              dbUnits.forEach(u => { if (aktywneJednostki.has(u.name)) unitsMap.set(u.name, u.id); });
+          }
+
+          const battlesMap = new Map();
           const pozycjeDoBazy = [];
           const graniceWKlatkach = {};
 
-          // --- 3. ZAPIS JEDNOSTEK, GRANIC I OŚ CZASU ---
           for (const [timestamp, stan] of Object.entries(klatki)) {
               const recordedAt = new Date(Number(timestamp)).toISOString();
               const sameGranice = [];
@@ -775,41 +903,65 @@
                   if (typ === 'Polygon' || typ === 'MultiPolygon') sameGranice.push(feature);
                   
                   if (typ === 'Point' && props.name) {
-                      let unitId;
-                      if (!unitsMap.has(props.name)) {
-                          // Pobieramy wyczyszczone ID frakcji
-                          const sideId = props.frakcja && frakcje[props.frakcja] ? props.frakcja : Object.keys(frakcje)[0];
-                          
-                          let { data: existingUnit, error: checkErr } = await db.from('units')
-                              .select('id')
-                              .eq('campaigns_id', BATTLE_ID)
-                              .eq('name', props.name)
-                              .maybeSingle();
+                      
+                      // ZAPIS BITWY
+                      if (props.iconType === 'battle') {
+                          sameGranice.push(feature); 
 
-                          if (checkErr) throw new Error("Błąd weryfikacji jednostki: " + checkErr.message);
+                          if (!battlesMap.has(props.name)) {
+                              let { data: existingBattle, error: checkErr } = await db.from('battles')
+                                  .select('id')
+                                  .eq('name', props.name)
+                                  .maybeSingle();
 
-                          if (existingUnit && existingUnit.id) {
-                              unitId = existingUnit.id;
-                          } else {
-                              const { data: newUnit, error: unitErr } = await db.from('units').insert({
-                                  campaigns_id: BATTLE_ID, 
-                                  side_id: sideId, 
-                                  name: props.name, 
-                                  unit_type: props.iconType || 'infantry', 
-                                  symbol: props.iconType || 'none'
-                              }).select('id').single();
-                              
-                              if (unitErr) throw new Error("Błąd dodawania jednostki: " + unitErr.message);
-                              if (!newUnit) throw new Error("Baza nie zwróciła ID dla nowej jednostki!");
-                              
-                              unitId = newUnit.id; 
+                              const battleData = {
+                                  name: props.name,
+                                  description: props.description || '',
+                                  result: props.result || '',
+                                  latitude: feature.geometry.coordinates[1],
+                                  longitude: feature.geometry.coordinates[0],
+                                  start_date: recordedAt 
+                              };
+
+                              if (existingBattle && existingBattle.id) {
+                                  await db.from('battles').update(battleData).eq('id', existingBattle.id);
+                              } else {
+                                  await db.from('battles').insert(battleData);
+                              }
+                              battlesMap.set(props.name, true);
                           }
-                          unitsMap.set(props.name, unitId);
-                      } else { 
-                          unitId = unitsMap.get(props.name); 
-                      }
+                      } 
+                      // ZAPIS JEDNOSTEK
+                      else {
+                          let unitId;
+                          if (!unitsMap.has(props.name)) {
+                              const sideId = props.frakcja && frakcje[props.frakcja] ? props.frakcja : Object.keys(frakcje)[0];
+                              
+                              let { data: existingUnit, error: checkErr } = await db.from('units')
+                                  .select('id')
+                                  .eq('campaigns_id', BATTLE_ID)
+                                  .eq('name', props.name)
+                                  .maybeSingle();
 
-                      pozycjeDoBazy.push({ unit_id: unitId, recorded_at: recordedAt, longitude: feature.geometry.coordinates[0], latitude: feature.geometry.coordinates[1], heading: 0, strength: 1000 });
+                              if (checkErr) throw new Error("Błąd weryfikacji jednostki: " + checkErr.message);
+
+                              if (existingUnit && existingUnit.id) {
+                                  unitId = existingUnit.id;
+                              } else {
+                                  const { data: newUnit, error: unitErr } = await db.from('units').insert({
+                                      campaigns_id: BATTLE_ID, side_id: sideId, name: props.name, unit_type: props.iconType || 'infantry', symbol: props.iconType || 'none'
+                                  }).select('id').single();
+                                  
+                                  if (unitErr) throw new Error("Błąd dodawania jednostki: " + unitErr.message);
+                                  unitId = newUnit.id; 
+                              }
+                              unitsMap.set(props.name, unitId);
+                          } else { 
+                              unitId = unitsMap.get(props.name); 
+                          }
+
+                          pozycjeDoBazy.push({ unit_id: unitId, recorded_at: recordedAt, longitude: feature.geometry.coordinates[0], latitude: feature.geometry.coordinates[1], heading: 0, strength: 1000 });
+                      }
                   }
               }
               graniceWKlatkach[timestamp] = sameGranice;
@@ -819,21 +971,50 @@
               const { error: posErr } = await db.from('unit_positions').insert(pozycjeDoBazy);
               if (posErr) throw new Error("Błąd zapisu pozycji: " + posErr.message);
           }
+
+          // ZAPIS ROZKAZÓW Z PAMIĘCI
+          if (lokalneRozkazy.length > 0) {
+              const dbOrders = [];
+              for (const r of lokalneRozkazy) {
+                  const uId = unitsMap.get(r.unitName);
+                  if (uId) {
+                      dbOrders.push({
+                          unit_id: uId,
+                          issued_at: r.issued_at,
+                          valid_from: r.valid_from,
+                          order_type: r.order_type,
+                          description: r.description,
+                          target_latitude: r.target_latitude,
+                          target_longitude: r.target_longitude
+                      });
+                  }
+              }
+              if (dbOrders.length > 0) {
+                  const { error: ordErr } = await db.from('orders').insert(dbOrders);
+                  if (ordErr) throw new Error("Błąd zapisu rozkazów: " + ordErr.message);
+              }
+          }
           
           const { error: campErr } = await db.from('campaigns').update({ map_config: { borders_timeline: graniceWKlatkach } }).eq('id', BATTLE_ID);
           if (campErr) throw new Error("Błąd aktualizacji kampanii: " + campErr.message);
 
           btn.innerHTML = "<i class='fa-solid fa-check'></i> Zapisano"; btn.classList.replace("bg-yellow-600", "bg-green-600");
-          
-          // Wymuszamy autozapis by naprawione dane nadpisały śmieci w Local Storage
           autozapis(); 
-          
           setTimeout(() => { btn.innerHTML = "<i class='fa-solid fa-cloud-arrow-up'></i> Zapisz do Bazy"; btn.classList.remove("bg-green-600"); }, 3000);
       } catch (err) {
           console.error("Szczegóły błędu:", err);
           alert(err.message); 
           btn.innerHTML = "❌ Błąd"; 
           btn.classList.replace("bg-yellow-600", "bg-red-600");
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+          if (historiaMapy.length > 1) {
+              historiaMapy.pop();
+              const poprzedni = historiaMapy[historiaMapy.length - 1]; odtworzStan(poprzedni); zapiszKlatke(poprzedni);
+          }
       }
     });
   </script>
