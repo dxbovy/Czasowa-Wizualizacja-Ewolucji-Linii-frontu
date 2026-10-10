@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="pl" class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CWEL(f) - Czasowa Wizualizacja Ewolucji Linii</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              tactical: {
+                900: '#0f172a', 800: '#1e293b', 700: '#334155',
+                accent: '#10b981', accentHover: '#059669'
+              }
+            }
+          }
+        }
+      }
+    </script>
+  </head>
+
+  <body class="bg-tactical-900 text-slate-300 font-sans min-h-screen flex flex-col">
+    <!-- Navbar -->
+    <nav class="border-b border-tactical-700 bg-tactical-900/80 backdrop-blur-md sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
+        <div class="flex items-center gap-3">
+          <i class="fa-solid fa-map-location-dot text-tactical-accent text-2xl"></i>
+          <span class="font-bold text-xl text-white tracking-wider">CWEL<span class="text-tactical-accent text-sm">(f)</span></span>
+        </div>
+        <div class="hidden md:flex gap-6">
+          <a href="#opis" class="hover:text-tactical-accent transition-colors">Problem i Rozwiązanie</a>
+          <a href="#tech" class="hover:text-tactical-accent transition-colors">Technologie</a>
+          <a href="#funkcje" class="hover:text-tactical-accent transition-colors">Funkcje</a>
+
+        </div>
+        <a href="bitwy.html" class="px-5 py-2 rounded-lg bg-tactical-accent hover:bg-tactical-accentHover text-white font-medium transition-all">
+          Baza bitew
+        </a>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 text-center">
+      <!-- Dekoracyjne tło z gradientem (imitacja radaru/mapy) -->
+      <div class="absolute inset-0 -z-10 flex items-center justify-center opacity-10">
+        <div class="w-96 h-96 border border-tactical-accent rounded-full animate-ping" style="animation-duration: 3s;"></div>
+      </div>
+
+      <h1 class="text-5xl md:text-7xl font-extrabold text-white mb-6 tracking-tight">
+        Czasowa Wizualizacja <br />
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-tactical-accent to-emerald-300">
+          Ewolucji Linii (frontu)
+        </span>
+      </h1>
+      
+      <p class="mt-4 text-xl md:text-2xl text-slate-400 max-w-3xl mx-auto font-light">
+        Zaawansowane narzędzie stworzone na hackathon. Przeanalizuj przebieg starć, wektory natarcia oddziałów i chronologię rozkazów na interaktywnej mapie taktycznej.
+      </p>
+
+      <div class="mt-10 flex flex-col sm:flex-row justify-center gap-4">
+        <!-- Główny przycisk przejścia do aplikacji -->
+        <a href="bitwy.html" class="px-8 py-4 rounded-xl bg-tactical-accent hover:bg-tactical-accentHover text-white text-lg font-bold shadow-lg shadow-tactical-accent/30 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-3">
+          <i class="fa-solid fa-map"></i>
+          Wybierz bitwę i rozpocznij
+        </a>
+      </div>
+    </section>
+
+    <!-- Problem i Rozwiązanie -->
+    <section id="problem" class="bg-tactical-800/50 py-20 border-y border-tactical-700">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-12">
+          <h2 class="text-3xl font-bold text-white">Dlaczego to robimy?</h2>
+        </div>
+        <div class="space-y-6 text-lg text-slate-300 leading-relaxed">
+          <p>
+            Tradycyjne mapy historyczne, które znamy z podręczników, są <strong>statyczne i często nieczytelne</strong>. Gąszcz nakładających się na siebie strzałek, dat i skomplikowanych symboli sprawia, że pełne zrozumienie przebiegu bitwy jest zarezerwowane wyłącznie dla prawdziwych pasjonatów i ekspertów.
+          </p>
+          <p>
+            Stworzyliśmy <strong>CWEL(f)</strong>, aby udostępnić tę wiedzę laikom, uczniom i nauczycielom. Nasza aplikacja pozwala na odtworzenie starcia chronologicznie, minuta po minucie. Zamiast domyślać się kolejności zdarzeń, wystarczy przesunąć suwak na osi czasu.
+          </p>
+          <div class="bg-tactical-900 border-l-4 border-tactical-accent p-6 rounded-r-lg mt-8">
+            <h3 class="text-white font-bold mb-2"><i class="fa-solid fa-school mr-2 text-tactical-accent"></i>Idealne dla edukacji</h3>
+            <p class="text-sm">Narzędzie pozwala kliknąć w każdą "kropkę" reprezentującą jednostkę (np. batalion), zobaczyć jej wektor natarcia i przeczytać historyczne rozkazy z danego momentu. To zupełnie nowy sposób na angażujące lekcje historii.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Technologie -->
+    <section id="tech" class="py-20">
+      <div class="max-w-7xl mx-auto px-4 text-center">
+        <h2 class="text-3xl font-bold text-white mb-10">Stos technologiczny (WIP)</h2>
+        <div class="flex flex-wrap justify-center gap-8">
+          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40">
+            <i class="fa-brands fa-node-js text-5xl text-green-500"></i>
+            <span class="font-bold">Node.js</span>
+          </div>
+          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40">
+            <i class="fa-solid fa-database text-5xl text-emerald-500"></i>
+            <span class="font-bold">Supabase</span>
+          </div>
+          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40">
+            <i class="fa-brands fa-css3-alt text-5xl text-blue-400"></i>
+            <span class="font-bold">Tailwind CSS</span>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- Funkcjonalności / Opis Projektu -->
+    <section id="funkcje" class="bg-tactical-800/50 py-20 border-y border-tactical-700">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-16">
+          <h2 class="text-3xl font-bold text-white">Główne możliwości edytora</h2>
+          <p class="mt-4 text-slate-400">Wszystko, czego potrzebujesz do dokładnej analizy pola bitwy.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <!-- Cecha 1 -->
+          <div class="bg-tactical-900 p-8 rounded-2xl border border-tactical-700 hover:border-tactical-accent/50 transition-colors group">
+            <div class="w-14 h-14 bg-tactical-800 rounded-xl flex items-center justify-center mb-6 group-hover:bg-tactical-accent/20 transition-colors">
+              <i class="fa-solid fa-clock-rotate-left text-2xl text-tactical-accent"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-3">Chronologiczna Oś Czasu</h3>
+            <p class="text-slate-400">
+              Płynnie przesuwaj suwak czasu, aby śledzić ewolucję linii frontu dzień po dniu, godzinę po godzinie. Zobacz, jak zmieniała się sytuacja na polu walki.
+            </p>
+          </div>
+
+          <!-- Cecha 2 -->
+          <div class="bg-tactical-900 p-8 rounded-2xl border border-tactical-700 hover:border-tactical-accent/50 transition-colors group">
+            <div class="w-14 h-14 bg-tactical-800 rounded-xl flex items-center justify-center mb-6 group-hover:bg-tactical-accent/20 transition-colors">
+              <i class="fa-solid fa-location-crosshairs text-2xl text-tactical-accent"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-3">Wektory i Oddziały</h3>
+            <p class="text-slate-400">
+              Kropki na mapie reprezentują konkretne bataliony i dywizje. Dołączone do nich wektory siły i kierunku precyzyjnie obrazują dynamikę natarcia lub odwrotu.
+            </p>
+          </div>
+
+          <!-- Cecha 3 -->
+          <div class="bg-tactical-900 p-8 rounded-2xl border border-tactical-700 hover:border-tactical-accent/50 transition-colors group">
+            <div class="w-14 h-14 bg-tactical-800 rounded-xl flex items-center justify-center mb-6 group-hover:bg-tactical-accent/20 transition-colors">
+              <i class="fa-solid fa-file-signature text-2xl text-tactical-accent"></i>
+            </div>
+            <h3 class="text-xl font-bold text-white mb-3">Szczegóły Rozkazów</h3>
+            <p class="text-slate-400">
+              Interaktywność na najwyższym poziomie. Kliknij na dowolną jednostkę na mapie, aby otworzyć panel boczny z historycznymi rozkazami i celami misji.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+    <footer class="bg-tactical-900 border-t border-tactical-800 py-8">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="text-slate-500 text-sm">
+          &copy; 2026 Projekt na Hackathon. Stworzone przez 3-osobowy zespół.
+        </div>
+        <div class="flex gap-4">
+          <!-- Tutaj możecie wstawić link do repozytorium GitHub po hackathonie -->
+          <a href="#" class="text-slate-500 hover:text-white transition-colors text-xl">
+            <i class="fa-brands fa-github"></i>
+          </a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
