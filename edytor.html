@@ -1,151 +1,735 @@
 <!DOCTYPE html>
 <html lang="pl">
-  <head>
-    <meta charset="UTF-8">
-    <title>Edytor Scenariusza - CWEL(f)</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = { theme: { extend: { colors: { tactical: { 900: '#0f172a', 800: '#1e293b', 700: '#334155', accent: '#10b981' } } } } }
-    </script>
-  </head>
-  <body class="bg-tactical-900 text-slate-300 font-sans h-screen flex flex-col overflow-hidden">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CWEL(f) - Edytor Linii Frontu</title>
+  
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%2310b981' d='M384 476.1L192 421.2l-148.2 49.4C19.7 478.7 0 460.6 0 435.5V107.5c0-18.7 12.8-35 30.9-39.5l161.1-40.3 192 54.9 148.2-49.4c24.1-8 43.8 10.1 43.8 35.2v328c0 18.7-12.8 35-30.9 39.5L384 476.1zm-96-368.6c-44.2 0-80 35.8-80 80c0 40.8 66.8 126.9 74.4 136.6c2.8 3.6 8.3 3.6 11.2 0c7.6-9.7 74.4-95.8 74.4-136.6c0-44.2-35.8-80-80-80zm0 112a32 32 0 1 1 0-64 32 32 0 1 1 0 64z'/%3E%3C/svg%3E">
+  
+  <!-- FontAwesome & Tailwind -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: { colors: { tactical: { 950: '#090a0f', 900: '#0f1015', 800: '#181920', 700: '#262730', 600: '#3b3d4a', accent: '#10b981', accentHover: '#059669' } } }
+      }
+    }
+  </script>
+
+  <!-- Leaflet & Geoman CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.css" />
+
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; }
     
-    <!-- Topbar Edytora -->
-    <header class="h-14 bg-tactical-900 border-b border-tactical-700 flex justify-between items-center px-4 shrink-0 z-30">
-      <div class="flex items-center gap-4">
-        <a href="bitwy.html" class="text-slate-400 hover:text-white transition-colors" title="Zakończ edycję"><i class="fa-solid fa-xmark text-xl"></i></a>
-        <div>
-          <h1 class="text-white font-bold flex items-center gap-2">
-            Bitwa nad Bzurą <i class="fa-solid fa-pen text-xs text-slate-500 cursor-pointer hover:text-tactical-accent"></i>
-          </h1>
-        </div>
-      </div>
-      <div class="flex items-center gap-3">
-        <div class="text-xs text-slate-400 mr-2">Ostatni zapis: 2 min temu</div>
-        <button class="px-4 py-1.5 bg-tactical-800 hover:bg-tactical-700 border border-tactical-700 rounded text-sm text-white font-medium transition-colors">
-          Anuluj zmiany
-        </button>
-        <button class="px-4 py-1.5 bg-tactical-accent hover:bg-emerald-600 rounded text-sm text-white font-bold transition-colors shadow-lg shadow-tactical-accent/20">
-          <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Zapisz do bazy
-        </button>
-      </div>
-    </header>
+    /* Mroczny styl mapy - efekt radaru */
+    .leaflet-tile { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
+    .leaflet-control-zoom { border: none !important; }
+    .leaflet-control-zoom a { background-color: #181920 !important; color: #10b981 !important; border-color: #262730 !important; }
+    
+    /* Konfiguracja okienek */
+    #icon-modal { display: none; }
+    
+    /* Płynne przenikanie Tooltipów */
+    .leaflet-tooltip { transition: opacity 0.2s; }
+  </style>
+</head>
+<body class="bg-tactical-950 text-slate-300 font-sans h-screen flex flex-col">
 
-    <div class="flex flex-1 overflow-hidden relative">
-      
-      <!-- Toolbox Edytora (Pływający po lewej na mapie) -->
-      <div class="absolute left-4 top-4 z-20 flex flex-col gap-2 bg-tactical-900/90 backdrop-blur p-2 rounded-xl border border-tactical-700 shadow-xl">
-        <button class="w-10 h-10 rounded-lg bg-tactical-accent text-white flex items-center justify-center hover:bg-emerald-600 tooltip" title="Dodaj jednostkę (Kropkę)">
-          <i class="fa-solid fa-plus"></i>
-        </button>
-        <div class="w-full h-px bg-tactical-700 my-1"></div>
-        <button class="w-10 h-10 rounded-lg bg-tactical-800 text-slate-300 hover:bg-tactical-700 hover:text-white flex items-center justify-center" title="Narysuj wektor ruchu">
-          <i class="fa-solid fa-arrow-trend-up"></i>
-        </button>
-        <button class="w-10 h-10 rounded-lg bg-tactical-800 text-slate-300 hover:bg-tactical-700 hover:text-white flex items-center justify-center" title="Ustaw pozycję startową">
-          <i class="fa-solid fa-location-crosshairs"></i>
-        </button>
-        <div class="w-full h-px bg-tactical-700 my-1"></div>
-        <button class="w-10 h-10 rounded-lg bg-red-900/50 text-red-400 hover:bg-red-800 hover:text-white flex items-center justify-center" title="Usuń wybrany element">
-          <i class="fa-solid fa-trash-can"></i>
-        </button>
-      </div>
+  <!-- Topbar -->
+  <header class="h-14 bg-tactical-900 border-b border-tactical-700 flex justify-between items-center px-4 shrink-0 z-20 shadow-md">
+    <div class="flex items-center gap-4">
+      <a href="bitwy.html" class="text-slate-400 hover:text-white transition-colors"><i class="fa-solid fa-arrow-left"></i> Wróć</a>
+      <h1 id="battle-title" class="text-white font-bold tracking-wide">Ładowanie operacji...</h1>
+    </div>
+    <div class="flex gap-2">
+      <button id="toggle-names-btn" class="px-3 py-1.5 bg-tactical-800 hover:bg-tactical-700 border border-tactical-700 text-xs rounded transition-colors">
+        <i class="fa-regular fa-eye"></i> Pokaż/Ukryj Nazwy
+      </button>
+      <button id="export-db-btn" class="px-4 py-1.5 bg-tactical-accent hover:bg-tactical-accentHover text-white text-xs font-bold rounded shadow-[0_0_10px_rgba(16,185,129,0.2)] transition-all">
+        <i class="fa-solid fa-cloud-arrow-up mr-1"></i> Zapisz do Bazy
+      </button>
+    </div>
+  </header>
 
-      <!-- Obszar Mapy -->
-      <main class="flex-1 bg-[#1a202c] relative flex items-center justify-center cursor-crosshair">
-        <div class="absolute inset-0 opacity-10" style="background-image: linear-gradient(#334155 1px, transparent 1px), linear-gradient(90deg, #334155 1px, transparent 1px); background-size: 50px 50px;"></div>
-        <div class="text-slate-600 text-xl font-bold z-10 select-none">Obszar roboczy edytora mapy</div>
-      </main>
-
-      <!-- Prawy Panel: Właściwości (Forms) -->
-      <aside class="w-96 bg-tactical-900 border-l border-tactical-700 flex flex-col shrink-0 overflow-y-auto z-10 shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.3)]">
+  <div class="flex flex-1 relative">
+    
+    <!-- Panel boczny: Frakcje i Narzędzia -->
+    <aside class="w-64 bg-tactical-950 border-r border-tactical-700 flex flex-col shrink-0 z-10 shadow-2xl relative">
+      <div class="p-4 flex-1 overflow-y-auto">
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Zarządzanie Siłami</h3>
         
-        <div class="p-4 bg-tactical-800/50 border-b border-tactical-700">
-          <h2 class="text-sm font-bold uppercase tracking-wider text-slate-400">Właściwości obiektu</h2>
-        </div>
-
-        <!-- Formularz edycji jednostki ('units' table) -->
-        <div class="p-5 space-y-4">
-          <div>
-            <label class="block text-xs text-slate-400 mb-1">ID Jednostki (Baza)</label>
-            <input type="text" disabled value="unit-001" class="w-full bg-tactical-900/50 border border-tactical-800 rounded px-3 py-2 text-sm text-slate-500 cursor-not-allowed">
-          </div>
+        <div class="bg-tactical-900 border border-tactical-700 p-3 rounded-lg mb-4">
+          <label class="text-xs text-slate-400 block mb-1">Aktywna Frakcja:</label>
+          <select id="frakcja-select" class="w-full bg-tactical-800 text-white border border-tactical-600 rounded p-1 mb-2 text-sm focus:outline-none focus:border-tactical-accent"></select>
           
-          <div>
-            <label class="block text-xs text-slate-400 mb-1">Nazwa jednostki <span class="text-red-400">*</span></label>
-            <input type="text" value="14 Pułk Piechoty" class="w-full bg-tactical-800 border border-tactical-700 focus:border-tactical-accent rounded px-3 py-2 text-sm text-white outline-none">
-          </div>
-
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="block text-xs text-slate-400 mb-1">Strona konfliktu</label>
-              <select class="w-full bg-tactical-800 border border-tactical-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-tactical-accent">
-                <option value="blue" selected>Niebiescy (Polska)</option>
-                <option value="red">Czerwoni (Wróg)</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-xs text-slate-400 mb-1">Typ (Symbol NATO)</label>
-              <select class="w-full bg-tactical-800 border border-tactical-700 rounded px-3 py-2 text-sm text-white outline-none focus:border-tactical-accent">
-                <option value="infantry" selected>Piechota</option>
-                <option value="armor">Czołgi</option>
-                <option value="artillery">Artyleria</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label class="block text-xs text-slate-400 mb-1">Siła (Liczebność)</label>
-            <input type="number" value="2400" class="w-full bg-tactical-800 border border-tactical-700 focus:border-tactical-accent rounded px-3 py-2 text-sm text-white outline-none">
-          </div>
-        </div>
-
-        <!-- Formularz dodawania/edycji rozkazów ('orders' table) -->
-        <div class="p-5 border-t border-tactical-700 flex-1 bg-tactical-800/20">
-          <div class="flex justify-between items-center mb-4">
-            <h3 class="text-sm font-bold text-white">Rozkazy dla jednostki</h3>
-            <button class="text-xs bg-tactical-700 hover:bg-tactical-600 text-white px-2 py-1 rounded transition-colors"><i class="fa-solid fa-plus mr-1"></i>Dodaj</button>
-          </div>
-
-          <!-- Karta edycji rozkazu -->
-          <div class="bg-tactical-800 border border-tactical-600 rounded-lg p-3 space-y-3">
-            <div class="flex justify-between items-center">
-              <span class="text-xs font-bold text-tactical-accent">Rozkaz #1</span>
-              <button class="text-slate-500 hover:text-red-400"><i class="fa-solid fa-trash-can"></i></button>
-            </div>
-            
-            <div class="grid grid-cols-2 gap-2">
-              <div>
-                <label class="block text-[10px] text-slate-400 mb-1 uppercase">Ważny od</label>
-                <input type="datetime-local" value="1939-09-10T10:15" class="w-full bg-tactical-900 border border-tactical-700 rounded px-2 py-1 text-xs text-white outline-none">
-              </div>
-              <div>
-                <label class="block text-[10px] text-slate-400 mb-1 uppercase">Ważny do</label>
-                <input type="datetime-local" value="1939-09-10T12:00" class="w-full bg-tactical-900 border border-tactical-700 rounded px-2 py-1 text-xs text-white outline-none">
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-[10px] text-slate-400 mb-1 uppercase">Typ rozkazu</label>
-              <select class="w-full bg-tactical-900 border border-tactical-700 rounded px-2 py-1 text-xs text-white outline-none">
-                <option value="move" selected>MOVE (Przemieszczenie)</option>
-                <option value="attack">ATTACK (Atak)</option>
-                <option value="defend">DEFEND (Obrona)</option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-[10px] text-slate-400 mb-1 uppercase">Treść / Opis</label>
-              <textarea rows="2" class="w-full bg-tactical-900 border border-tactical-700 rounded px-2 py-1 text-xs text-white outline-none resize-none">Przesunąć się na północ w kierunku rzeki...</textarea>
-            </div>
-            
-            <button class="w-full py-1.5 border border-tactical-600 border-dashed rounded text-xs text-slate-400 hover:text-white hover:border-tactical-400 transition-colors">
-              <i class="fa-solid fa-crosshairs mr-1"></i> Wybierz cel na mapie (Zapisze target_lat/lng)
+          <div class="flex gap-2 mb-2 items-center">
+            <input type="color" id="frakcja-kolor" class="w-8 h-8 rounded border-none bg-transparent cursor-pointer">
+            <button id="dodaj-frakcje-btn" class="flex-1 text-xs bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 rounded py-1.5">
+              <i class="fa-solid fa-plus"></i> Nowa
             </button>
           </div>
+          
+          <button id="maluj-btn" class="w-full text-xs bg-tactical-800 border border-tactical-600 hover:bg-tactical-700 rounded py-2 transition-colors">
+            <i class="fa-solid fa-fill-drip"></i> Tryb Malowania: Wył.
+          </button>
         </div>
-      </aside>
+
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 mt-6">Narzędzia Zapasowe</h3>
+        <button id="draw-arrow-btn" class="w-full text-left px-3 py-2 text-sm bg-tactical-900 border border-tactical-700 hover:border-tactical-accent rounded transition-colors mb-2">
+          <i class="fa-solid fa-arrow-pointer w-5 text-red-500"></i> Rysuj wektor natarcia
+        </button>
+        <button id="export-btn" class="w-full text-left px-3 py-2 text-sm bg-tactical-900 border border-tactical-700 hover:border-slate-500 rounded transition-colors mb-2">
+          <i class="fa-solid fa-download w-5 text-slate-400"></i> Eksport lokalny (JSON)
+        </button>
+        <input type="file" id="import-input" accept=".json" style="display: none;" />
+        <button id="import-btn" class="w-full text-left px-3 py-2 text-sm bg-tactical-900 border border-tactical-700 hover:border-slate-500 rounded transition-colors">
+          <i class="fa-solid fa-upload w-5 text-slate-400"></i> Import granic/stanu (JSON)
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAPA -->
+    <main class="flex-1 relative bg-tactical-900" id="map-container">
+      <div id="map" class="w-full h-full z-0"></div>
+    </main>
+    
+  </div>
+
+  <!-- Pasek Osi Czasu -->
+  <footer class="h-20 bg-tactical-900 border-t border-tactical-700 flex flex-col justify-center px-6 shrink-0 z-20">
+    <div class="flex justify-between items-center mb-2">
+      <div class="flex gap-2">
+        <button id="czas-dzien-wstecz" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">-1d</button>
+        <button id="czas-wstecz" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">-1h</button>
+      </div>
+      
+      <div class="flex items-center gap-4">
+        <button id="czas-play" class="px-4 py-1.5 bg-tactical-800 border border-tactical-600 hover:border-tactical-accent text-white text-xs font-bold rounded-full transition-colors flex gap-2 items-center">
+          <i class="fa-solid fa-play"></i> Odtwórz
+        </button>
+        <strong id="czas-etykieta" class="text-sm font-mono text-tactical-accent"></strong>
+        <button id="czas-usun-klatke" class="text-xs px-2 py-1 text-red-400 hover:bg-red-900/30 rounded" title="Usuń klatkę dla tej godziny"><i class="fa-solid fa-trash"></i></button>
+      </div>
+
+      <div class="flex gap-2">
+        <button id="czas-dalej" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">+1h</button>
+        <button id="czas-dzien-dalej" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">+1d</button>
+      </div>
     </div>
-  </body>
+    
+    <div class="relative pt-1">
+      <input type="range" id="czas-suwak" min="0" value="0" step="1" class="w-full h-1 bg-tactical-700 rounded-lg appearance-none cursor-pointer accent-tactical-accent">
+      <div id="czas-znaczniki" class="absolute top-0 w-full h-1 pointer-events-none opacity-50"></div>
+    </div>
+  </footer>
+
+  <!-- Modal Ikonek Tailwind -->
+  <div id="icon-modal" class="fixed inset-0 bg-black/70 z-[9999] flex justify-center items-center backdrop-blur-sm">
+    <div class="bg-tactical-900 border border-tactical-700 rounded-xl p-6 shadow-2xl max-w-sm w-full">
+      <h3 class="text-lg font-bold text-white mb-4 border-b border-tactical-700 pb-2">Wybierz typ jednostki</h3>
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <button onclick="window.wybierzIkone('czolg')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">🛡️</span> Czołg</button>
+        <button onclick="window.wybierzIkone('piechota')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">🪖</span> Piechota</button>
+        <button onclick="window.wybierzIkone('zmech')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">⚙️</span> Zmechanizowana</button>
+        <button onclick="window.wybierzIkone('kwadrat')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">⬛</span> Sztab / Kwadrat</button>
+        <button onclick="window.wybierzIkone('kolo')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm col-span-2"><span class="text-lg">🔴</span> Inne / Koło</button>
+      </div>
+      <div class="bg-tactical-950 p-3 rounded border border-dashed border-tactical-600 text-xs text-slate-400 mb-4 text-center">
+        Własna grafika (PNG/JPG):<br>
+        <input type="file" id="custom-icon-upload" accept="image/*" class="mt-2 w-full text-slate-500 file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-tactical-800 file:text-white">
+      </div>
+      <button onclick="window.anulujDodawanie()" class="w-full py-2 bg-red-900/30 hover:bg-red-600 text-red-200 hover:text-white border border-red-800 rounded transition-colors text-sm font-bold">
+        ❌ Anuluj
+      </button>
+    </div>
+  </div>
+
+  <!-- Biblioteki Skryptowe -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://unpkg.com/leaflet-polylinedecorator/dist/leaflet.polylineDecorator.js"></script>
+
+  <!-- LOGIKA EDYTORA -->
+  <script>
+    // 1. Inicjalizacja Bazy i Czasu
+    const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const BATTLE_ID = urlParams.get('battle_id');
+    if (!BATTLE_ID) {
+      alert("Błąd: Nie przekazano ID bitwy w adresie URL.");
+      window.location.href = "bitwy.html";
+    }
+
+    let battleData = null;
+    let CZAS_START = Date.UTC(1939, 8, 1, 4, 0);   
+    let CZAS_KONIEC = Date.UTC(1939, 9, 6, 23, 0); 
+    const GODZINA = 3600000;
+    let czasTeraz = CZAS_START;
+
+    // 2. Inicjalizacja Mapy
+    const map = L.map('map').setView([52.069, 19.480], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM' }).addTo(map);
+
+    map.pm.addControls({
+      position: 'topleft', drawCircleMarker: false, drawCircle: false, drawText: false, 
+      editMode: false, dragMode: true, cutPolygon: true, removalMode: true,
+    });
+    map.pm.setGlobalOptions({ snappable: false });
+
+    // 3. Stan Edytora
+    let historiaMapy = [];
+    let wybraneDoAneksji = [];
+    let trybRysowaniaStrzalki = false;
+    let trybMalowania = false;
+    let nazwyPermanentne = false; // Steruje zachowaniem Tooltipów (Hover vs Zawsze widoczne)
+    let klatki = {}; 
+
+    let frakcje = {
+        pl: { nazwa: 'Polska', kolor: '#e63946' },
+        de: { nazwa: 'Niemcy', kolor: '#495057' },
+        su: { nazwa: 'ZSRR', kolor: '#d9480f' },
+        neutral: { nazwa: 'Neutralne', kolor: '#adb5bd' },
+    };
+    let aktywnaFrakcja = 'pl';
+
+    async function loadBattleData() {
+      const { data: b, error } = await db.from('campaigns').select('*').eq('id', BATTLE_ID).single();
+      if(b) {
+        battleData = b;
+        document.getElementById('battle-title').innerText = "Edytor: " + b.name;
+        if(b.start_time) CZAS_START = new Date(b.start_time).getTime();
+        if(b.end_time) CZAS_KONIEC = new Date(b.end_time).getTime();
+        czasTeraz = CZAS_START;
+        document.getElementById('czas-suwak').max = Math.round((CZAS_KONIEC - CZAS_START) / GODZINA);
+      }
+
+      const { data: s } = await db.from('sides').select('*').eq('battle_id', BATTLE_ID);
+      if(s && s.length > 0) {
+        frakcje = {};
+        s.forEach(side => {
+           const key = side.id.split('-').pop();
+           frakcje[key] = { nazwa: side.name, kolor: side.color, _realId: side.id };
+           if(!aktywnaFrakcja) aktywnaFrakcja = key;
+        });
+      }
+
+      odswiezListeFrakcji();
+      odswiezZnaczniki();
+      ustawCzas(CZAS_START);
+    }
+    loadBattleData();
+
+    // 4. Narzędzia Mapy
+    function zapiszStan(tylkoHistoria = false) {
+      const features = map.pm.getGeomanLayers().map(layer => layer.toGeoJSON());
+      const stan = { type: "FeatureCollection", features };
+      const ostatni = historiaMapy[historiaMapy.length - 1];
+      if (ostatni && JSON.stringify(ostatni.features) === JSON.stringify(stan.features)) return;
+      
+      historiaMapy.push(stan);
+      if (historiaMapy.length > 15) historiaMapy.shift();
+      if (!tylkoHistoria) zapiszKlatke(stan);
+    }
+
+    // GŁÓWNA FUNKCJA WGRYWAJĄCA STAN / GEOJSON
+    function odtworzStan(geoJsonData) {
+      map.pm.disableDraw();
+      
+      // Czyścimy obecne obiekty na mapie
+      map.pm.getGeomanLayers().forEach(layer => layer.remove());
+      
+      if (!geoJsonData || !geoJsonData.features || geoJsonData.features.length === 0) return;
+
+      // Tworzymy bufor geoJSON z domyślnym stylem dla państw bez frakcji
+      const bufferLayer = L.geoJSON(geoJsonData, {
+          style: function(feature) {
+              if (!feature.properties || !feature.properties.frakcja) {
+                  return { color: '#64748b', fillColor: '#334155', fillOpacity: 0.2, weight: 2 };
+              }
+          }
+      });
+
+      // Zrzucamy obiekty z bufora bezpośrednio na mapę (by Geoman mógł je edytować)
+      bufferLayer.getLayers().forEach(layer => {
+          layer.addTo(map);
+          layer.options.pmIgnore = false;
+          L.PM.reInitLayer(layer);
+
+          const props = layer.feature?.properties;
+          
+          if (props?.isArrow && layer instanceof L.Polyline) {
+              stylujStrzalke(layer, props.color);
+          }
+          if (props?.frakcja && !(layer instanceof L.Marker)) {
+              zastosujFrakcje(layer, props.frakcja);
+          }
+          if (layer instanceof L.Marker && props?.iconType) {
+              zastosujIkone(layer, props.iconType, props.iconUrl);
+          }
+          
+          // Przypinanie nazw/tooltipów podążających za kursorem (HOVER)
+          const nazwa = props?.name || props?.NAME || props?.SUBJECTO;
+          if (nazwa) {
+              layer.bindTooltip(nazwa, { 
+                  permanent: nazwyPermanentne, 
+                  sticky: !nazwyPermanentne, // !false = true (czyli podąża za kursorem i reaguje na hover)
+                  direction: 'center',
+                  className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
+              });
+          }
+          
+          dodajEdycjeIKlikanie(layer);
+      });
+    }
+
+    function dodajEdycjeIKlikanie(layer) {
+      layer.on('pm:dragend pm:edit', () => zapiszStan());
+
+      layer.on('click', (e) => {
+          if (map.pm.globalDrawModeEnabled()) return;
+          L.DomEvent.stopPropagation(e);
+          
+          if (trybMalowania) {
+              zastosujFrakcje(layer, aktywnaFrakcja);
+              zapiszStan();
+              return;
+          }
+          if (e.originalEvent.shiftKey) {
+              layer.setStyle({ color: '#ff0000', fillColor: '#ff0000' });
+              wybraneDoAneksji.push(layer);
+              if (wybraneDoAneksji.length === 2) {
+                  wykonajAneksje(wybraneDoAneksji[0], wybraneDoAneksji[1]);
+                  wybraneDoAneksji = [];
+              }
+          } else {
+              layer.pm.toggleEdit();
+          }
+      });
+
+      layer.on('contextmenu', (e) => {
+          if (map.pm.globalDrawModeEnabled()) return;
+          L.DomEvent.stopPropagation(e);
+          
+          const props = layer.feature?.properties || {};
+          const obecnaNazwa = props?.name || props?.NAME || props?.SUBJECTO || "";
+          const nowaNazwa = prompt("Podaj nazwę dla tego obiektu:", obecnaNazwa);
+
+          if (nowaNazwa !== null) {
+              layer.feature = layer.feature || { type: "Feature", properties: {} };
+              layer.feature.properties.name = nowaNazwa;
+              
+              // Odświeżenie Tooltipu
+              layer.unbindTooltip();
+              layer.bindTooltip(nowaNazwa, { 
+                  permanent: nazwyPermanentne, 
+                  sticky: !nazwyPermanentne, 
+                  direction: 'center',
+                  className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
+              });
+              zapiszStan();
+          }
+      });
+    }
+
+    function wykonajAneksje(w1, w2) {
+      try {
+          const u = turf.union(turf.featureCollection([w1.toGeoJSON(), w2.toGeoJSON()]));
+          if (u) {
+              const fid = w1.feature?.properties?.frakcja;
+              w1.remove(); w2.remove();
+              const nl = L.geoJSON(u).addTo(map);
+              
+              nl.getLayers().forEach(nk => {
+                  nk.options.pmIgnore = false;
+                  L.PM.reInitLayer(nk);
+                  dodajEdycjeIKlikanie(nk);
+                  
+                  const nazwa = prompt("Aneksja zakończona! Podaj nazwę nowego terytorium:");
+                  nk.feature = nk.feature || { type: "Feature", properties: {} };
+                  if (fid) zastosujFrakcje(nk, fid);
+                  if (nazwa) {
+                      nk.feature.properties.name = nazwa;
+                      nk.bindTooltip(nazwa, { 
+                          permanent: nazwyPermanentne, 
+                          sticky: !nazwyPermanentne, 
+                          direction: 'center',
+                          className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
+                      });
+                  }
+              });
+              zapiszStan();
+          }
+      } catch (err) {
+          alert("Błąd aneksji.");
+          [w1, w2].forEach(w => {
+              const id = w.feature?.properties?.frakcja;
+              id ? zastosujFrakcje(w, id) : w.setStyle({ color: '#3388ff' });
+          });
+      }
+    }
+
+    const ZDARZENIA_EDYCJI = 'pm:edit pm:markerdrag pm:drag pm:vertexadded pm:vertexremoved';
+    function stylujStrzalke(layer, kolor = '#10b981') {
+      layer.feature = layer.feature || { type: "Feature", properties: {} };
+      layer.feature.properties.isArrow = true;
+      layer.feature.properties.color = kolor;
+      layer.setStyle({ color: kolor, weight: 4, dashArray: '10, 10' });
+
+      if (layer._grot) map.removeLayer(layer._grot);
+      if (layer._odswiezGrot) layer.off(ZDARZENIA_EDYCJI, layer._odswiezGrot);
+      if (layer._usunGrot) layer.off('remove', layer._usunGrot);
+
+      layer._grot = L.polylineDecorator(layer, {
+          patterns: [{ offset: '100%', repeat: 0, symbol: L.Symbol.arrowHead({ pixelSize: 18, polygon: true, pathOptions: { color: kolor, fillColor: kolor, fillOpacity: 1, weight: 2, pmIgnore: true } }) }]
+      }).addTo(map);
+      layer._odswiezGrot = () => layer._grot && layer._grot.setPaths(layer.getLatLngs());
+      layer._usunGrot = () => { if (layer._grot) map.removeLayer(layer._grot); };
+      layer.on(ZDARZENIA_EDYCJI, layer._odswiezGrot);
+      layer.on('remove', layer._usunGrot);
+    }
+
+    function zastosujFrakcje(layer, id) {
+      const f = frakcje[id];
+      if (!f) return;
+      layer.feature = layer.feature || { type: "Feature", properties: {} };
+      layer.feature.properties.frakcja = id;
+
+      if (layer instanceof L.Marker) {
+          if (layer.feature.properties.iconType) zastosujIkone(layer, layer.feature.properties.iconType, layer.feature.properties.iconUrl);
+      } else if (layer.feature.properties.isArrow && layer instanceof L.Polyline) {
+          stylujStrzalke(layer, f.kolor);
+      } else if (layer instanceof L.Polygon) {
+          layer.setStyle({ color: f.kolor, fillColor: f.kolor, fillOpacity: 0.35, weight: 2 });
+      } else if (layer instanceof L.Polyline) {
+          layer.setStyle({ color: f.kolor });
+      }
+    }
+
+    // 5. Wydarzenia Geoman i Tworzenie Markerów
+    let oczekujacyMarker = null;
+    map.on('pm:create', (e) => {
+      const layer = e.layer;
+      layer.feature = layer.feature || { type: "Feature", properties: {} };
+
+      if (e.shape === 'Marker') {
+          layer.feature.properties.frakcja = aktywnaFrakcja; 
+          oczekujacyMarker = layer;
+          document.getElementById('icon-modal').style.display = 'flex';
+      } else if (e.shape === 'Line') {
+          if (trybRysowaniaStrzalki) {
+              layer.feature.properties.isArrow = true;
+              trybRysowaniaStrzalki = false;
+          }
+          zastosujFrakcje(layer, aktywnaFrakcja);
+          dodajEdycjeIKlikanie(layer);
+          zapiszStan();
+      } else {
+          zastosujFrakcje(layer, aktywnaFrakcja);
+          dodajEdycjeIKlikanie(layer);
+          zapiszStan();
+      }
+    });
+
+    window.wybierzIkone = function (typ) { zastosujIkone(oczekujacyMarker, typ, null); zamknijModalIDokoncz(); }
+    window.anulujDodawanie = function () { document.getElementById('icon-modal').style.display = 'none'; if (oczekujacyMarker) { map.removeLayer(oczekujacyMarker); oczekujacyMarker = null; } }
+    
+    document.getElementById('custom-icon-upload').addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (event) { zastosujIkone(oczekujacyMarker, 'custom', event.target.result); zamknijModalIDokoncz(); document.getElementById('custom-icon-upload').value = ''; }
+      reader.readAsDataURL(file);
+    });
+
+    function zastosujIkone(layer, typ, url) {
+      layer.feature = layer.feature || { type: "Feature", properties: {} };
+      layer.feature.properties.iconType = typ;
+      if (url) layer.feature.properties.iconUrl = url;
+
+      let icon;
+      if (typ === 'custom') {
+          icon = L.icon({ iconUrl: url, iconSize: [40, 40], iconAnchor: [20, 20] });
+      } else {
+          let emoji = '📍';
+          if (typ === 'czolg') emoji = '🛡️';
+          if (typ === 'piechota') emoji = '🪖';
+          if (typ === 'zmech') emoji = '⚙️';
+          if (typ === 'kwadrat') emoji = '⬛';
+          if (typ === 'kolo') emoji = '🔴';
+          const kolor = frakcje[layer.feature.properties.frakcja]?.kolor || '#888';
+          icon = L.divIcon({
+              html: `<div style="width:34px;height:34px;margin:-17px 0 0 -17px;display:flex;align-items:center;justify-content:center;font-size:18px;background:#262730;border:3px solid ${kolor};border-radius:50%;">${emoji}</div>`,
+              className: 'custom-div-icon shadow-lg'
+          });
+      }
+      layer.setIcon(icon);
+    }
+
+    function zamknijModalIDokoncz() {
+      document.getElementById('icon-modal').style.display = 'none';
+      const nazwa = prompt("Podaj nazwę dla tej jednostki:");
+      if (nazwa) {
+          oczekujacyMarker.feature.properties.name = nazwa;
+          oczekujacyMarker.bindTooltip(nazwa, { 
+              permanent: nazwyPermanentne, 
+              sticky: !nazwyPermanentne, 
+              direction: 'center',
+              className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
+          });
+      }
+      dodajEdycjeIKlikanie(oczekujacyMarker);
+      zapiszStan();
+      oczekujacyMarker = null;
+    }
+
+    map.on('pm:remove', () => zapiszStan());
+    map.on('pm:cut', (e) => { e.layer.getLayers().forEach(nk => dodajEdycjeIKlikanie(nk)); zapiszStan(); });
+    
+    document.getElementById('draw-arrow-btn').addEventListener('click', () => {
+      trybRysowaniaStrzalki = true; map.pm.enableDraw('Line', { snappable: false });
+    });
+
+    // Przełącznik NAZW (Stale widoczne vs Podążające za Hoverem)
+    document.getElementById('toggle-names-btn').addEventListener('click', () => {
+        nazwyPermanentne = !nazwyPermanentne;
+        const btn = document.getElementById('toggle-names-btn');
+        btn.classList.toggle('bg-tactical-accent', nazwyPermanentne);
+        btn.classList.toggle('border-tactical-accent', nazwyPermanentne);
+        
+        map.pm.getGeomanLayers().forEach(layer => {
+            const props = layer.feature?.properties;
+            const nazwa = props?.name || props?.NAME || props?.SUBJECTO;
+            if(nazwa) {
+                layer.unbindTooltip();
+                layer.bindTooltip(nazwa, { 
+                    permanent: nazwyPermanentne, 
+                    sticky: !nazwyPermanentne, // Powraca do zachowania "Hover"
+                    direction: 'center',
+                    className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
+                });
+            }
+        });
+    });
+
+    // 6. Zarządzanie Panelem Frakcji
+    const selectFrakcji = document.getElementById('frakcja-select');
+    const kolorInput = document.getElementById('frakcja-kolor');
+    const malujBtn = document.getElementById('maluj-btn');
+
+    function odswiezListeFrakcji() {
+      selectFrakcji.innerHTML = '';
+      for (const [id, f] of Object.entries(frakcje)) {
+          const opt = document.createElement('option'); opt.value = id; opt.textContent = f.nazwa; selectFrakcji.appendChild(opt);
+      }
+      if(!frakcje[aktywnaFrakcja]) aktywnaFrakcja = Object.keys(frakcje)[0];
+      selectFrakcji.value = aktywnaFrakcja;
+      if(frakcje[aktywnaFrakcja]) kolorInput.value = frakcje[aktywnaFrakcja].kolor;
+    }
+    
+    selectFrakcji.addEventListener('change', () => { aktywnaFrakcja = selectFrakcji.value; kolorInput.value = frakcje[aktywnaFrakcja].kolor; });
+    kolorInput.addEventListener('input', () => {
+      frakcje[aktywnaFrakcja].kolor = kolorInput.value;
+      map.pm.getGeomanLayers().forEach(l => { if (l.feature?.properties?.frakcja === aktywnaFrakcja) zastosujFrakcje(l, aktywnaFrakcja); });
+    });
+    kolorInput.addEventListener('change', () => { zapiszStan(); autozapis(); });
+    
+    document.getElementById('dodaj-frakcje-btn').addEventListener('click', () => {
+      const nazwa = prompt("Nazwa nowej frakcji:"); if (!nazwa) return;
+      const id = 'f' + Date.now().toString().slice(-6);
+      const losowy = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+      frakcje[id] = { nazwa, kolor: losowy }; aktywnaFrakcja = id;
+      odswiezListeFrakcji(); autozapis();
+    });
+
+    malujBtn.addEventListener('click', () => {
+      trybMalowania = !trybMalowania;
+      malujBtn.innerHTML = trybMalowania ? '<i class="fa-solid fa-fill-drip"></i> Malowanie: WŁ.' : '<i class="fa-solid fa-fill-drip"></i> Malowanie: Wył.';
+      malujBtn.classList.toggle('bg-tactical-accent', trybMalowania);
+      document.getElementById('map').style.cursor = trybMalowania ? 'crosshair' : '';
+    });
+
+    // 7. Oś Czasu
+    const suwak = document.getElementById('czas-suwak');
+    const etykieta = document.getElementById('czas-etykieta');
+    const znaczniki = document.getElementById('czas-znaczniki');
+    const playBtn = document.getElementById('czas-play');
+    
+    function najblizszaKlatka(t) { let wynik = null; for (const k of Object.keys(klatki)) { const n = Number(k); if (n <= t && (wynik === null || n > wynik)) wynik = n; } return wynik; }
+    
+    function zapiszKlatke(stan) {
+      const klucz = najblizszaKlatka(czasTeraz);
+      const dokladna = klucz === czasTeraz;
+      const poprzednia = klucz !== null ? klatki[klucz] : { features: [] };
+      const taSama = JSON.stringify(poprzednia.features) === JSON.stringify(stan.features);
+      if (dokladna || !taSama) { klatki[czasTeraz] = stan; autozapis(); odswiezZnaczniki(); odswiezEtykiete(); }
+    }
+
+    function autozapis() { try { localStorage.setItem('kampania-autozapis-'+BATTLE_ID, JSON.stringify({ frakcje, klatki })); } catch (e) {} }
+    
+    function odswiezEtykiete() {
+      const t = new Date(czasTeraz).toLocaleString('pl-PL', { timeZone: 'UTC', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const jestKlatka = najblizszaKlatka(czasTeraz) === czasTeraz;
+      etykieta.innerHTML = t + (jestKlatka ? ' <span class="text-red-400 text-xs">● klatka</span>' : '');
+    }
+    
+    function odswiezZnaczniki() {
+      znaczniki.innerHTML = ''; const zakres = CZAS_KONIEC - CZAS_START;
+      for (const k of Object.keys(klatki)) {
+          const proc = ((Number(k) - CZAS_START) / zakres) * 100;
+          if (proc >= 0 && proc <= 100) {
+              const d = document.createElement('div');
+              d.className = "absolute top-0 w-[3px] h-3 bg-red-500 rounded";
+              d.style.left = `${proc}%`; d.style.marginLeft = "-1px";
+              znaczniki.appendChild(d);
+          }
+      }
+    }
+    
+    function ustawCzas(t) {
+      czasTeraz = Math.min(CZAS_KONIEC, Math.max(CZAS_START, t));
+      wybraneDoAneksji = [];
+      const klucz = najblizszaKlatka(czasTeraz);
+      const stan = klucz !== null ? klatki[klucz] : null;
+      odtworzStan(stan);
+      historiaMapy = [{ type: "FeatureCollection", features: stan ? stan.features : [] }];
+      suwak.value = Math.round((czasTeraz - CZAS_START) / GODZINA);
+      odswiezEtykiete();
+    }
+
+    suwak.addEventListener('input', () => ustawCzas(CZAS_START + Number(suwak.value) * GODZINA));
+    document.getElementById('czas-wstecz').addEventListener('click', () => ustawCzas(czasTeraz - GODZINA));
+    document.getElementById('czas-dalej').addEventListener('click', () => ustawCzas(czasTeraz + GODZINA));
+    document.getElementById('czas-dzien-wstecz').addEventListener('click', () => ustawCzas(czasTeraz - 24 * GODZINA));
+    document.getElementById('czas-dzien-dalej').addEventListener('click', () => ustawCzas(czasTeraz + 24 * GODZINA));
+    document.getElementById('czas-usun-klatke').addEventListener('click', () => { if (klatki[czasTeraz]) { delete klatki[czasTeraz]; autozapis(); odswiezZnaczniki(); ustawCzas(czasTeraz); } });
+
+    let timerPlay = null;
+    playBtn.addEventListener('click', () => {
+      if (timerPlay) { clearInterval(timerPlay); timerPlay = null; playBtn.innerHTML = '<i class="fa-solid fa-play"></i> Odtwórz'; playBtn.classList.remove('text-tactical-accent','border-tactical-accent'); return; }
+      playBtn.innerHTML = '<i class="fa-solid fa-pause"></i> Pauza'; playBtn.classList.add('text-tactical-accent','border-tactical-accent');
+      timerPlay = setInterval(() => {
+          if (czasTeraz >= CZAS_KONIEC) { clearInterval(timerPlay); timerPlay = null; playBtn.innerHTML = '<i class="fa-solid fa-play"></i> Odtwórz'; playBtn.classList.remove('text-tactical-accent'); return; }
+          ustawCzas(czasTeraz + GODZINA);
+      }, 300);
+    });
+
+    // 8. Import / Export Local
+    document.getElementById('export-btn').addEventListener('click', () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ format: "kampania-v2", frakcje, klatki }));
+      const a = document.createElement('a'); a.href = dataStr; a.download = `kampania_${BATTLE_ID}.json`; document.body.appendChild(a); a.click(); a.remove();
+    });
+    
+    document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-input').click());
+    
+    document.getElementById('import-input').addEventListener('change', (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+          try {
+              const d = JSON.parse(e.target.result);
+              
+              if (d.frakcje || d.klatki) { 
+                  if (d.frakcje) { Object.assign(frakcje, d.frakcje); odswiezListeFrakcji(); }
+                  if (d.klatki) { klatki = d.klatki; autozapis(); odswiezZnaczniki(); ustawCzas(czasTeraz); }
+              } 
+              else if (d.type === "FeatureCollection" || d.features) {
+                  const obecne = map.pm.getGeomanLayers().map(l => l.toGeoJSON());
+                  
+                  // Łączymy dotychczasową mapę z zaimportowanymi granicami
+                  odtworzStan({ type: "FeatureCollection", features: [...obecne, ...d.features] });
+                  zapiszStan();
+                  
+                  // Wymuszamy przybliżenie kamery na zaimportowane państwa
+                  const tempLayer = L.geoJSON(d);
+                  map.fitBounds(tempLayer.getBounds());
+              }
+          } catch(err) { 
+              alert("Niepoprawny plik JSON: " + err.message); 
+          }
+      };
+      reader.readAsText(file);
+      e.target.value = ''; 
+    });
+    
+    try {
+      const zapis = JSON.parse(localStorage.getItem('kampania-autozapis-'+BATTLE_ID));
+      if (zapis?.klatki) { klatki = zapis.klatki; Object.assign(frakcje, zapis.frakcje || {}); odswiezListeFrakcji(); }
+    } catch(err) {}
+
+    // 9. ZAPIS DO SUPABASE Z KREATORA!
+    document.getElementById('export-db-btn').addEventListener('click', async () => {
+      if (Object.keys(klatki).length === 0) return alert("Brak klatek do eksportu!");
+      const btn = document.getElementById('export-db-btn');
+      btn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> Wysyłanie..."; btn.classList.add("bg-yellow-600");
+
+      try {
+          // Aktualizacja Frakcji
+          for (const [key, f] of Object.entries(frakcje)) {
+              const sideId = f._realId || ('00000000-0000-0000-0000-' + key.padEnd(12, '0'));
+              await db.from('sides').upsert({ id: sideId, battle_id: BATTLE_ID, name: f.nazwa, color: f.kolor });
+              f._realId = sideId;
+          }
+
+          const unitsMap = new Map();
+          const pozycjeDoBazy = [];
+          const graniceWKlatkach = {};
+
+          // Parsowanie Klatek (Snapshotów)
+          for (const [timestamp, stan] of Object.entries(klatki)) {
+              const recordedAt = new Date(Number(timestamp)).toISOString();
+              const sameGranice = [];
+
+              for (const feature of stan.features) {
+                  const typ = feature.geometry.type;
+                  const props = feature.properties || {};
+                  
+                  if (typ === 'Polygon' || typ === 'MultiPolygon') sameGranice.push(feature);
+                  
+                  if (typ === 'Point' && props.name) {
+                      let unitId;
+                      if (!unitsMap.has(props.name)) {
+                          const sideId = frakcje[props.frakcja]?._realId || ('00000000-0000-0000-0000-' + (props.frakcja || 'neutral').padEnd(12, '0'));
+                          const { data: newUnit } = await db.from('units').upsert({
+                              battle_id: BATTLE_ID, side_id: sideId, name: props.name, unit_type: props.iconType || 'infantry', symbol: props.iconType || 'none'
+                          }, { onConflict: 'name, battle_id' }).select('id').single();
+                          unitId = newUnit.id; unitsMap.set(props.name, unitId);
+                      } else { unitId = unitsMap.get(props.name); }
+
+                      pozycjeDoBazy.push({ unit_id: unitId, recorded_at: recordedAt, longitude: feature.geometry.coordinates[0], latitude: feature.geometry.coordinates[1], heading: 0, strength: 1000 });
+                  }
+              }
+              graniceWKlatkach[timestamp] = sameGranice;
+          }
+
+          if (pozycjeDoBazy.length > 0) {
+              await db.from('unit_positions').insert(pozycjeDoBazy);
+          }
+          await db.from('campaigns').update({ map_config: { borders_timeline: graniceWKlatkach } }).eq('id', BATTLE_ID);
+
+          btn.innerHTML = "<i class='fa-solid fa-check'></i> Zapisano"; btn.classList.replace("bg-yellow-600", "bg-green-600");
+          setTimeout(() => { btn.innerHTML = "<i class='fa-solid fa-cloud-arrow-up'></i> Zapisz do Bazy"; btn.classList.remove("bg-green-600"); }, 3000);
+      } catch (err) {
+          alert("Błąd: " + err.message); btn.innerHTML = "❌ Błąd"; btn.classList.replace("bg-yellow-600", "bg-red-600");
+      }
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+          if (historiaMapy.length > 1) {
+              historiaMapy.pop();
+              const poprzedni = historiaMapy[historiaMapy.length - 1]; odtworzStan(poprzedni); zapiszKlatke(poprzedni);
+          }
+      }
+    });
+  </script>
+</body>
 </html>

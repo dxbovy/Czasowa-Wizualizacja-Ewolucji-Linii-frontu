@@ -4,7 +4,12 @@ import 'leaflet/dist/leaflet.css';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
 import * as turf from '@turf/turf';
 import 'leaflet-polylinedecorator';
+const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
 
+// Tworzenie klienta dokładnie tak jak w bitwy.html:
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const BATTLE_ID = 'f20985be-9067-47e2-a668-baf97445209d';
 // =========================================================================
 // 1. INICJALIZACJA MAPY
 // =========================================================================
@@ -591,3 +596,101 @@ try {
 }
 odswiezZnaczniki();
 ustawCzas(CZAS_START);
+document.getElementById('export-db-btn').addEventListener('click', async () => {
+    if (Object.keys(klatki).length === 0) {
+        alert("Brak klatek do eksportu!");
+        return;
+    }
+
+    const btn = document.getElementById('export-db-btn');
+    btn.textContent = "⏳ Wysyłanie...";
+    btn.style.background = "#f39c12";
+
+    try {
+        // 1. Zapis frakcji do tabeli 'sides'
+        for (const [key, f] of Object.entries(frakcje)) {
+            // Upsert (aktualizuj jeśli istnieje, dodaj jeśli nie)
+            await supabase.from('sides').upsert({
+                id: '00000000-0000-0000-0000-' + key.padEnd(12, '0'), // Fake UUID dla prostoty prototypu
+                battle_id: BATTLE_ID,
+                name: f.nazwa,
+                color: f.kolor
+            });
+        }
+
+        // Przygotowanie kontenerów na wyciągnięte dane
+        const unitsMap = new Map(); // nazwa_jednostki -> ID
+        const pozycjeDoBazy = [];
+        const graniceWKlatkach = {};
+
+        // 2. Analiza klatek (snapshotów)
+        for (const [timestamp, stan] of Object.entries(klatki)) {
+            const recordedAt = new Date(Number(timestamp)).toISOString();
+            const sameGranice = [];
+
+            for (const feature of stan.features) {
+                const typ = feature.geometry.type;
+                const props = feature.properties || {};
+                
+                // Jeśli to poligon (granica) -> wrzucamy do map_config
+                if (typ === 'Polygon' || typ === 'MultiPolygon') {
+                    sameGranice.push(feature);
+                }
+                
+                // Jeśli to kropka (jednostka) -> do unit_positions
+                if (typ === 'Point' && props.name) {
+                    let unitId;
+                    
+                    // Rejestrujemy nową jednostkę w bazie, jeśli jeszcze jej nie ma
+                    if (!unitsMap.has(props.name)) {
+                        const { data: newUnit } = await supabase.from('units').insert({
+                            battle_id: BATTLE_ID,
+                            side_id: '00000000-0000-0000-0000-' + (props.frakcja || 'neutral').padEnd(12, '0'),
+                            name: props.name,
+                            unit_type: props.iconType || 'infantry',
+                            symbol: props.iconType || 'none'
+                        }).select('id').single();
+                        
+                        unitId = newUnit.id;
+                        unitsMap.set(props.name, unitId);
+                    } else {
+                        unitId = unitsMap.get(props.name);
+                    }
+
+                    // Zapisujemy pozycję w czasie
+                    pozycjeDoBazy.push({
+                        unit_id: unitId,
+                        recorded_at: recordedAt,
+                        longitude: feature.geometry.coordinates[0],
+                        latitude: feature.geometry.coordinates[1],
+                        heading: 0,
+                        strength: 1000 // Placeholder
+                    });
+                }
+            }
+            graniceWKlatkach[timestamp] = sameGranice;
+        }
+
+        // 3. Masowy insert wszystkich pozycji jednostek
+        if (pozycjeDoBazy.length > 0) {
+            await supabase.from('unit_positions').insert(pozycjeDoBazy);
+        }
+
+        // 4. Zapisanie granic do JSONB w tabeli battles
+        await supabase.from('battles').update({
+            map_config: { 
+                borders_timeline: graniceWKlatkach 
+            }
+        }).eq('id', BATTLE_ID);
+
+        btn.textContent = "✅ Zapisano!";
+        btn.style.background = "#27ae60";
+        setTimeout(() => { btn.textContent = "☁️ Wyślij do Supabase"; btn.style.background = "#10b981"; }, 3000);
+
+    } catch (err) {
+        console.error("Błąd eksportu do Supabase:", err);
+        alert("Błąd: " + err.message);
+        btn.textContent = "❌ Błąd";
+        btn.style.background = "#e74c3c";
+    }
+});

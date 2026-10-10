@@ -1,6 +1,5 @@
 {
   "dependencies": {
-<<<<<<< HEAD
     "@geoman-io/leaflet-geoman-free": "^2.20.2",
     "@turf/turf": "^7.4.0",
     "leaflet": "^1.9.4",
@@ -11,17 +10,17 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "vite": "^5.4.21"
-=======
     "@tailwindcss/cli": "^4.3.3",
-    "tailwindcss": "^4.3.3"
->>>>>>> b1646663c81fef9c51bcea3c9795b0dbd98714a5
+    "tailwindcss": "^4.3.3",
+    "vite": "^5.4.21"
   }
 }

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pl">
+<!-- Biblioteka Supabase ładowana z sieci -->
+<head>
+    <meta charset="UTF-8">
+    <title>Mapa Hackathon</title>
+    <style>
+        #map {
+            height: 100vh;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            margin: 0;
+            font-family: sans-serif;
+        }
+
+        .ukryj-nazwy .moj-tooltip {
+            opacity: 0 !important;
+            visibility: hidden !important;
+            transition: opacity 0.2s;
+        }
+
+        /* --- STYLE DLA OKIENKA WYBORU IKONY --- */
+        #icon-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            max-width: 400px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .icon-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .icon-grid button {
+            padding: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            background: #f8f9fa;
+            border-radius: 5px;
+            transition: 0.2s;
+        }
+
+        .icon-grid button:hover {
+            background: #e9ecef;
+        }
+
+        .custom-upload-box {
+            margin-top: 15px;
+            padding: 15px;
+            border: 2px dashed #3498db;
+            border-radius: 5px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+</head>
+
+<body>
+    <!-- Zwykłe guziki -->
+    <button id="export-db-btn" style="position: absolute; top: 20px; right: 200px; z-index: 1000; padding: 10px 20px; background: #10b981; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(16,185,129,0.4);">
+    ☁️ Wyślij do Supabase
+    </button>
+    <button id="export-btn"
+        style="position: absolute; top: 20px; right: 20px; z-index: 1000; padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">💾
+        Eksportuj Front</button>
+    <button id="import-btn"
+        style="position: absolute; top: 60px; right: 20px; z-index: 1000; padding: 10px 20px; background: #3498db; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">📂
+        Importuj Plik .json</button>
+    <button id="toggle-names-btn"
+        style="position: absolute; top: 100px; right: 20px; z-index: 1000; padding: 10px 20px; background: #2c3e50; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">👁️
+        Pokaż / Ukryj Nazwy</button>
+    <input type="file" id="import-input" accept=".json" style="display: none;" />
+    <button id="draw-arrow-btn"
+        style="position: absolute; top: 140px; right: 20px; z-index: 1000; padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer;">
+        🏹 Rysuj Strzałkę
+    </button>
+    <div id="panel-frakcji"
+        style="position:absolute; top:190px; right:20px; z-index:1000; background:white; padding:10px; border-radius:5px; box-shadow:0 2px 8px rgba(0,0,0,.3); width:190px; font-weight:bold;">
+        Frakcja
+        <select id="frakcja-select" style="width:100%; margin:6px 0; padding:5px;"></select>
+        <div style="display:flex; gap:6px; align-items:center; margin-bottom:6px;">
+            <input type="color" id="frakcja-kolor" style="width:40px; height:30px; padding:0; border:none;">
+            <button id="dodaj-frakcje-btn" style="flex:1; padding:6px; cursor:pointer;">➕ Nowa</button>
+        </div>
+        <button id="maluj-btn" style="width:100%; padding:8px; cursor:pointer;">🎨 Koloruj: wył.</button>
+    </div>
+    <!-- OKIENKO WYBORU IKONY -->
+    <div id="icon-modal">
+        <div class="modal-content">
+            <h3>Wybierz typ jednostki</h3>
+            <div class="icon-grid">
+                <button onclick="window.wybierzIkone('czolg')">🛡️ Czołg</button>
+                <button onclick="window.wybierzIkone('piechota')">🪖 Piechota</button>
+                <button onclick="window.wybierzIkone('zmech')">⚙️ Zmechaniz.</button>
+                <button onclick="window.wybierzIkone('kwadrat')">⬛ Kwadrat</button>
+                <button onclick="window.wybierzIkone('kolo')">🔴 Koło</button>
+            </div>
+            <div class="custom-upload-box">
+                <h4>LUB wgraj własną figurkę (PNG/JPG):</h4>
+                <input type="file" id="custom-icon-upload" accept="image/*">
+            </div>
+
+            <hr style="margin: 15px 0; border-top: 1px solid #ddd;">
+            <button onclick="window.anulujDodawanie()"
+                style="padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 5px; width: 100%; cursor: pointer; font-size: 16px;">
+                ❌ Anuluj
+            </button>
+        </div>
+    </div>
+
+    <div id="map"></div>
+    <div id="panel-czasu"
+        style="position:absolute; bottom:30px; left:50%; transform:translateX(-50%); z-index:1000; background:white; padding:10px 16px; border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.35); width:min(900px, 75vw);">
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+            <button id="czas-dzien-wstecz">⏪ −1d</button>
+            <button id="czas-wstecz">◀ −1h</button>
+            <button id="czas-play">▶ Odtwórz</button>
+            <button id="czas-dalej">+1h ▶</button>
+            <button id="czas-dzien-dalej">+1d ⏩</button>
+            <strong id="czas-etykieta" style="flex:1; text-align:center;"></strong>
+            <button id="czas-usun-klatke">🗑️ Usuń klatkę</button>
+        </div>
+        <input type="range" id="czas-suwak" min="0" value="0" step="1" style="width:100%;">
+        <div id="czas-znaczniki" style="position:relative; height:10px;"></div>
+    </div>
+    <script type="module" src="/app.js"></script>
+</body>
+
+</html>
