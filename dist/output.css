@@ -328,6 +328,9 @@
   .z-\[9999\] {
     z-index: 9999;
   }
+  .col-span-1 {
+    grid-column: span 1 / span 1;
+  }
   .col-span-2 {
     grid-column: span 2 / span 2;
   }
@@ -984,6 +987,9 @@
   .p-1 {
     padding: var(--spacing);
   }
+  .p-1\.5 {
+    padding: calc(var(--spacing) * 1.5);
+  }
   .p-2 {
     padding: calc(var(--spacing) * 2);
   }
@@ -1142,6 +1148,9 @@
   }
   .text-\[10px\] {
     font-size: 10px;
+  }
+  .text-\[11px\] {
+    font-size: 11px;
   }
   .leading-relaxed {
     --tw-leading: var(--leading-relaxed);
@@ -1552,6 +1561,15 @@
     }
   }
   @media (width >= 48rem) {
+    .md\:col-span-1 {
+      grid-column: span 1 / span 1;
+    }
+    .md\:col-span-2 {
+      grid-column: span 2 / span 2;
+    }
+    .md\:col-span-3 {
+      grid-column: span 3 / span 3;
+    }
     .md\:mt-0 {
       margin-top: 0px;
     }

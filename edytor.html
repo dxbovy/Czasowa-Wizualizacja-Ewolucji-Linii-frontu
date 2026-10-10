@@ -29,26 +29,15 @@
     
     /* OVERRIDE: Mroczne Przyciski Narzędzi (Geoman & Leaflet) */
     .leaflet-bar { border: none !important; box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important; }
-    .leaflet-bar a, .leaflet-bar a:hover {
-        background-color: #181920 !important;
-        color: #10b981 !important;
-        border: 1px solid #262730 !important;
-    }
-    .leaflet-pm-toolbar .button-container.active a {
-        background-color: #262730 !important;
-    }
-    .leaflet-pm-icon-marker, .leaflet-pm-icon-polygon, .leaflet-pm-icon-line, .leaflet-pm-icon-cut, .leaflet-pm-icon-edit, .leaflet-pm-icon-delete, .leaflet-pm-icon-drag {
-        filter: invert(0.8) sepia(1) hue-rotate(100deg) saturate(5) brightness(1.2) !important;
-    }
-    .leaflet-pm-actions-container a {
-        background-color: #181920 !important;
-        color: #94a3b8 !important;
-        border: 1px solid #262730 !important;
-    }
-    .leaflet-pm-actions-container a:hover {
-        background-color: #3b3d4a !important;
-        color: #fff !important;
-    }
+    .leaflet-bar a, .leaflet-bar a:hover { background-color: #181920 !important; color: #10b981 !important; border: 1px solid #262730 !important; }
+    .leaflet-pm-toolbar .button-container.active a { background-color: #262730 !important; }
+    .leaflet-pm-icon-marker, .leaflet-pm-icon-polygon, .leaflet-pm-icon-line, .leaflet-pm-icon-cut, .leaflet-pm-icon-edit, .leaflet-pm-icon-delete, .leaflet-pm-icon-drag { filter: invert(0.8) sepia(1) hue-rotate(100deg) saturate(5) brightness(1.2) !important; }
+    .leaflet-pm-actions-container a { background-color: #181920 !important; color: #94a3b8 !important; border: 1px solid #262730 !important; }
+    .leaflet-pm-actions-container a:hover { background-color: #3b3d4a !important; color: #fff !important; }
+
+    /* Fix uciekającego kliknięcia przy wyborze celu */
+    .selecting-target { cursor: crosshair !important; }
+    .selecting-target .leaflet-interactive { pointer-events: none !important; }
   </style>
 </head>
 <body class="bg-tactical-950 text-slate-300 font-sans h-screen flex flex-col">
@@ -166,34 +155,48 @@
 
   <!-- MODAL: Zarządzanie Jednostką / Rozkazy -->
   <div id="unit-context-modal" class="fixed inset-0 bg-black/70 z-[9999] hidden justify-center items-center backdrop-blur-sm">
-    <div class="bg-tactical-900 border border-tactical-700 rounded-xl p-6 shadow-2xl max-w-sm w-full relative">
-        <h3 class="text-lg font-bold text-white mb-4 border-b border-tactical-700 pb-2">Centrala Dowodzenia</h3>
+    <div class="bg-tactical-900 border border-tactical-700 rounded-xl p-6 shadow-2xl max-w-md w-full relative">
+        <h3 class="text-lg font-bold text-white mb-4 border-b border-tactical-700 pb-2 flex items-center gap-2">
+            <i class="fa-solid fa-file-signature text-tactical-accent"></i> Rozkazy Jednostki
+        </h3>
         
-        <label class="text-xs text-slate-400 block mb-1 uppercase font-bold tracking-wider">Nazwa / Kryptonim</label>
-        <input type="text" id="uc-name" class="w-full bg-tactical-800 border border-tactical-600 rounded p-2 text-white mb-5 focus:outline-none focus:border-tactical-accent">
+        <label class="text-[10px] text-slate-400 block mb-1 uppercase font-bold tracking-wider">Kryptonim jednostki</label>
+        <input type="text" id="uc-name" class="w-full bg-tactical-800 border border-tactical-600 rounded p-2 text-white mb-4 focus:outline-none focus:border-tactical-accent">
         
         <div class="bg-tactical-950 p-4 rounded border border-tactical-700 mb-5 relative">
-            <div class="absolute -top-3 left-3 bg-tactical-950 px-2 text-xs font-bold text-tactical-accent flex items-center gap-1">
-                <i class="fa-solid fa-file-signature"></i> Sztab
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+                <div class="col-span-1 md:col-span-3">
+                    <label class="text-[10px] text-slate-400 block mb-1">Rodzaj rozkazu</label>
+                    <select id="uc-type" class="w-full bg-tactical-800 border border-tactical-600 rounded p-1.5 text-white text-[11px] focus:outline-none">
+                        <option value="move">Marsz / Przegrupowanie</option>
+                        <option value="attack">Atak</option>
+                        <option value="defend">Obrona</option>
+                        <option value="retreat">Odwrót</option>
+                        <option value="support">Wsparcie</option>
+                    </select>
+                </div>
+                <div class="col-span-1 md:col-span-1">
+                    <label class="text-[10px] text-slate-400 block mb-1" title="Zapisze się z tą datą w bazie jako issued_at oraz valid_from">Wydanie (Start)</label>
+                    <input type="datetime-local" id="uc-valid-from" class="w-full bg-tactical-800 border border-tactical-600 rounded p-1.5 text-white text-[11px] [color-scheme:dark]">
+                </div>
+                <div class="col-span-1 md:col-span-2">
+                    <label class="text-[10px] text-slate-400 block mb-1">Zakończenie (valid_until)</label>
+                    <input type="datetime-local" id="uc-valid-until" class="w-full bg-tactical-800 border border-tactical-600 rounded p-1.5 text-slate-400 text-[11px] [color-scheme:dark]">
+                </div>
             </div>
-            
-            <label class="text-xs text-slate-400 block mb-1 mt-2">Czas rozkazu:</label>
-            <div id="uc-time" class="text-sm font-mono text-white bg-tactical-800 px-2 py-1 rounded border border-tactical-700 mb-3 inline-block"></div>
-            
-            <select id="uc-type" class="w-full bg-tactical-800 border border-tactical-600 rounded p-2 text-white mb-3 text-sm focus:outline-none focus:border-tactical-accent">
-                <option value="move">Marsz / Przegrupowanie</option>
-                <option value="attack">Atak</option>
-                <option value="defend">Obrona</option>
-                <option value="retreat">Odwrót</option>
-                <option value="support">Wsparcie</option>
-            </select>
             
             <textarea id="uc-desc" rows="2" placeholder="Treść rozkazu taktycznego..." class="w-full bg-tactical-800 border border-tactical-600 rounded p-2 text-white mb-3 text-sm focus:outline-none focus:border-tactical-accent"></textarea>
             
+            <div class="flex gap-2 items-center">
+                <button onclick="wybierzCelRozkazu()" class="bg-tactical-700 hover:bg-tactical-600 text-xs px-3 py-2 rounded text-white border border-tactical-500 transition-colors shrink-0">
+                    <i class="fa-solid fa-crosshairs"></i> Ustal cel na mapie
+                </button>
+                <span id="uc-target-info" class="text-[11px] text-slate-400 truncate">Brak wyznaczonego celu</span>
+            </div>
         </div>
 
         <div class="flex gap-3 mt-2">
-            <button onclick="zapiszOpcjeJednostki()" class="flex-1 py-2.5 bg-tactical-accent hover:bg-tactical-accentHover text-white rounded font-bold shadow-[0_0_10px_rgba(16,185,129,0.2)] transition-colors">Wykonaj</button>
+            <button onclick="zapiszOpcjeJednostki()" class="flex-1 py-2.5 bg-tactical-accent hover:bg-tactical-accentHover text-white rounded font-bold shadow-[0_0_10px_rgba(16,185,129,0.2)] transition-colors">Zatwierdź</button>
             <button onclick="zamknijOpcjeJednostki()" class="flex-1 py-2.5 bg-tactical-800 hover:bg-tactical-700 text-slate-300 rounded font-bold border border-tactical-600 transition-colors">Anuluj</button>
         </div>
     </div>
@@ -243,7 +246,8 @@
     let trybMalowania = false;
     let nazwyPermanentne = false; 
     let klatki = {}; 
-    let lokalneRozkazy = []; // Przechowuje rozkazy dla jednostek z obecnej sesji
+    let lokalneRozkazy = []; 
+    window.orderArrows = []; 
 
     const idPL = crypto.randomUUID();
     const idDE = crypto.randomUUID();
@@ -257,6 +261,13 @@
         [idNeutral]: { nazwa: 'Neutralne', kolor: '#adb5bd' },
     };
     let aktywnaFrakcja = idPL;
+
+    // Funkcja do formatowania daty w Timezone przeglądarki na potrzeby okienka dat
+    function formatDateTimeLocal(ms) {
+        const d = new Date(ms);
+        const pad = n => n.toString().padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
 
     // 4. ŁADOWANIE DANYCH Z BAZY
     async function loadBattleData() {
@@ -312,7 +323,6 @@
               });
           }
 
-          // Wczytywanie Rozkazów z Bazy do pamięci podręcznej
           const { data: ordData } = await db.from('orders').select('*').in('unit_id', unitIds);
           if (ordData && ordData.length > 0) {
               ordData.forEach(o => {
@@ -384,6 +394,13 @@
 
     function odtworzStan(geoJsonData) {
       map.pm.disableDraw();
+      
+      // Czyszczenie strzałek rozkazów
+      if (window.orderArrows) {
+          window.orderArrows.forEach(a => map.removeLayer(a));
+      }
+      window.orderArrows = [];
+
       map.pm.getGeomanLayers().forEach(layer => layer.remove());
       if (!geoJsonData || !geoJsonData.features || geoJsonData.features.length === 0) return;
 
@@ -415,19 +432,80 @@
           }
           dodajEdycjeIKlikanie(layer);
       });
+
+      // Rysowanie STRZAŁEK ROZKAZÓW na mapie
+      map.pm.getGeomanLayers().forEach(layer => {
+          if (layer instanceof L.Marker) {
+              const props = layer.feature?.properties;
+              if (props && props.name && props.iconType !== 'battle') {
+                  
+                  const activeOrder = lokalneRozkazy.find(o =>
+                      o.unitName === props.name &&
+                      new Date(o.valid_from).getTime() <= czasTeraz &&
+                      (!o.valid_until || new Date(o.valid_until).getTime() >= czasTeraz)
+                  );
+
+                  if (activeOrder && activeOrder.target_latitude && activeOrder.target_longitude) {
+                      const unitPos = layer.getLatLng();
+                      const targetPos = [activeOrder.target_latitude, activeOrder.target_longitude];
+                      const kolor = frakcje[props.frakcja]?.kolor || '#10b981';
+
+                      const arrowLine = L.polyline([unitPos, targetPos], {
+                          color: kolor, weight: 2, dashArray: '5, 5', interactive: false
+                      }).addTo(map);
+
+                      const arrowHead = L.polylineDecorator(arrowLine, {
+                          patterns: [{ offset: '100%', repeat: 0, symbol: L.Symbol.arrowHead({ pixelSize: 12, polygon: true, pathOptions: { color: kolor, fillOpacity: 1, weight: 0, interactive: false } }) }]
+                      }).addTo(map);
+
+                      window.orderArrows.push(arrowLine, arrowHead);
+                  }
+              }
+          }
+      });
     }
 
-    // ROZKAZY: Logika modalnego okna edycji
+    // ROZKAZY: Okienko modalne
     let edytowanaJednostka = null;
     let tymczasowyCelRozkazu = null;
 
     function otworzOpcjeJednostki(layer) {
         edytowanaJednostka = layer;
         tymczasowyCelRozkazu = null;
-        document.getElementById('uc-name').value = layer.feature.properties.name || "";
-        document.getElementById('uc-time').innerText = new Date(czasTeraz).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
-        document.getElementById('uc-desc').value = "";
-        document.getElementById('uc-target-info').innerText = "Brak celu";
+        
+        const unitName = layer.feature.properties.name || "";
+        document.getElementById('uc-name').value = unitName;
+        
+        const activeOrder = lokalneRozkazy.find(o =>
+            o.unitName === unitName &&
+            new Date(o.valid_from).getTime() <= czasTeraz &&
+            (!o.valid_until || new Date(o.valid_until).getTime() >= czasTeraz)
+        );
+
+        if (activeOrder) {
+            document.getElementById('uc-type').value = activeOrder.order_type;
+            document.getElementById('uc-desc').value = activeOrder.description || "";
+            document.getElementById('uc-valid-from').value = formatDateTimeLocal(new Date(activeOrder.valid_from).getTime());
+            
+            if (activeOrder.valid_until) {
+                document.getElementById('uc-valid-until').value = formatDateTimeLocal(new Date(activeOrder.valid_until).getTime());
+            } else {
+                document.getElementById('uc-valid-until').value = formatDateTimeLocal(new Date(activeOrder.valid_from).getTime() + 24 * 3600000);
+            }
+
+            if (activeOrder.target_latitude) {
+                tymczasowyCelRozkazu = { lat: activeOrder.target_latitude, lng: activeOrder.target_longitude };
+                document.getElementById('uc-target-info').innerHTML = `<span class="text-tactical-accent font-bold">CEL ZAPISANY:</span> ${tymczasowyCelRozkazu.lat.toFixed(2)}, ${tymczasowyCelRozkazu.lng.toFixed(2)}`;
+            } else {
+                document.getElementById('uc-target-info').innerText = "Brak wyznaczonego celu";
+            }
+        } else {
+            document.getElementById('uc-type').value = "move";
+            document.getElementById('uc-desc').value = "";
+            document.getElementById('uc-valid-from').value = formatDateTimeLocal(czasTeraz);
+            document.getElementById('uc-valid-until').value = formatDateTimeLocal(czasTeraz + 24 * 3600000);
+            document.getElementById('uc-target-info').innerText = "Brak wyznaczonego celu";
+        }
         
         document.getElementById('unit-context-modal').style.display = 'flex';
     }
@@ -439,13 +517,18 @@
 
     function wybierzCelRozkazu() {
         document.getElementById('unit-context-modal').style.display = 'none';
-        alert("Wskaż koordynaty na mapie (kliknij), aby ustalić cel rozkazu.");
+        document.getElementById('map').classList.add('selecting-target');
         
-        // Złapanie pierwszego kliknięcia myszą na mapę
+        const infoHtml = `<div id="temp-target-info" style="position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#10b981; padding:10px 20px; border:1px solid #10b981; border-radius:8px; z-index:99999; font-weight:bold;">Wskaż cel rozkazu (Kliknij gdziekolwiek na mapę)</div>`;
+        document.body.insertAdjacentHTML('beforeend', infoHtml);
+        
         map.once('click', (e) => {
+            document.getElementById('map').classList.remove('selecting-target');
+            document.getElementById('temp-target-info').remove();
+            
             tymczasowyCelRozkazu = e.latlng;
-            document.getElementById('uc-target-info').innerHTML = `<span class="text-tactical-accent font-bold">Zapisano CEL:</span> ${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}`;
-            document.getElementById('unit-context-modal').style.display = 'flex'; // Przywrócenie okienka
+            document.getElementById('uc-target-info').innerHTML = `<span class="text-tactical-accent font-bold">CEL ZAPISANY:</span> ${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}`;
+            document.getElementById('unit-context-modal').style.display = 'flex';
         });
     }
 
@@ -462,18 +545,33 @@
         });
 
         const desc = document.getElementById('uc-desc').value;
-        if(desc.trim() !== "") {
-            lokalneRozkazy.push({
-                unitName: nowaNazwa,
-                order_type: document.getElementById('uc-type').value,
-                description: desc,
-                issued_at: new Date(czasTeraz).toISOString(),
-                valid_from: new Date(czasTeraz).toISOString(),
-                target_latitude: tymczasowyCelRozkazu ? tymczasowyCelRozkazu.lat : null,
-                target_longitude: tymczasowyCelRozkazu ? tymczasowyCelRozkazu.lng : null
-            });
-        }
+        const validFrom = document.getElementById('uc-valid-from').value;
+        const validUntil = document.getElementById('uc-valid-until').value;
+
+        const validFromIso = validFrom ? new Date(validFrom).toISOString() : new Date(czasTeraz).toISOString();
+        const validUntilIso = validUntil ? new Date(validUntil).toISOString() : new Date(czasTeraz + 24 * 3600000).toISOString();
+
+        lokalneRozkazy = lokalneRozkazy.filter(o => !(o.unitName === nowaNazwa && o.valid_from === validFromIso));
+
+        lokalneRozkazy.push({
+            unitName: nowaNazwa,
+            order_type: document.getElementById('uc-type').value,
+            description: desc,
+            issued_at: validFromIso,
+            valid_from: validFromIso,
+            valid_until: validUntilIso,
+            target_latitude: tymczasowyCelRozkazu ? tymczasowyCelRozkazu.lat : null,
+            target_longitude: tymczasowyCelRozkazu ? tymczasowyCelRozkazu.lng : null
+        });
+        
+        // WYMUSZENIE POJAWIENIA SIĘ KROPKI NA OSI CZASU
+        const features = map.pm.getGeomanLayers().map(layer => layer.toGeoJSON());
+        klatki[czasTeraz] = { type: "FeatureCollection", features };
+
         zapiszStan();
+        autozapis();
+        odswiezZnaczniki();
+        ustawCzas(czasTeraz); 
         zamknijOpcjeJednostki();
     }
 
@@ -497,7 +595,6 @@
           } else { layer.pm.toggleEdit(); }
       });
 
-      // Prawy klik (Opcje / Rozkazy)
       layer.on('contextmenu', (e) => {
           if (map.pm.globalDrawModeEnabled()) return;
           L.DomEvent.stopPropagation(e);
@@ -522,10 +619,8 @@
                   zapiszStan();
               }
           } else if (layer instanceof L.Marker) {
-              // Zwykła Jednostka (otwórz modal rozkazów)
               otworzOpcjeJednostki(layer);
           } else {
-              // Granice / Linie
               const nowaNazwa = prompt("Zmień nazwę terytorium/linii:", props?.name || "");
               if (nowaNazwa !== null) {
                   layer.feature.properties.name = nowaNazwa;
@@ -618,7 +713,7 @@
 
     window.wybierzIkone = function (typ) { zastosujIkone(oczekujacyMarker, typ, null); zamknijModalIDokoncz(); }
     window.anulujDodawanie = function () { document.getElementById('icon-modal').style.display = 'none'; if (oczekujacyMarker) { map.removeLayer(oczekujacyMarker); oczekujacyMarker = null; } }
-    
+
     function zastosujIkone(layer, typ, url) {
       layer.feature = layer.feature || { type: "Feature", properties: {} };
       layer.feature.properties.iconType = typ;
@@ -686,15 +781,19 @@
     map.on('pm:cut', (e) => { e.layer.getLayers().forEach(nk => dodajEdycjeIKlikanie(nk)); zapiszStan(); });
     
     document.getElementById('draw-arrow-btn').addEventListener('click', () => { trybRysowaniaStrzalki = true; map.pm.enableDraw('Line', { snappable: false }); });
+
     document.getElementById('toggle-names-btn').addEventListener('click', () => {
         nazwyPermanentne = !nazwyPermanentne;
         const btn = document.getElementById('toggle-names-btn');
-        btn.classList.toggle('bg-tactical-accent', nazwyPermanentne); btn.classList.toggle('border-tactical-accent', nazwyPermanentne);
+        btn.classList.toggle('bg-tactical-accent', nazwyPermanentne);
+        btn.classList.toggle('border-tactical-accent', nazwyPermanentne);
         
         map.pm.getGeomanLayers().forEach(layer => {
-            const props = layer.feature?.properties; const nazwa = props?.name || props?.NAME || props?.SUBJECTO;
+            const props = layer.feature?.properties;
+            const nazwa = props?.name || props?.NAME || props?.SUBJECTO;
             if(nazwa) {
-                layer.unbindTooltip(); layer.bindTooltip(nazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
+                layer.unbindTooltip();
+                layer.bindTooltip(nazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
             }
         });
     });
@@ -723,6 +822,10 @@
     
     document.getElementById('dodaj-frakcje-btn').addEventListener('click', () => {
       const nazwa = prompt("Nazwa nowej frakcji:"); if (!nazwa) return;
+      
+      const istnieje = Object.values(frakcje).some(f => f.nazwa.toLowerCase() === nazwa.toLowerCase());
+      if(istnieje) { alert(`Frakcja o nazwie "${nazwa}" już istnieje! Wybierz inną.`); return; }
+      
       const id = crypto.randomUUID(); 
       const losowy = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
       frakcje[id] = { nazwa, kolor: losowy }; aktywnaFrakcja = id;
@@ -755,7 +858,8 @@
     function autozapis() { try { localStorage.setItem('kampania-autozapis-'+BATTLE_ID, JSON.stringify({ frakcje, klatki, rozkazy: lokalneRozkazy })); } catch (e) {} }
     
     function odswiezEtykiete() {
-      const t = new Date(czasTeraz).toLocaleString('pl-PL', { timeZone: 'UTC', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      // UWAGA: Format daty posiada teraz na sztywno narzucony ROK, który widnieje w podglądzie
+      const t = new Date(czasTeraz).toLocaleString('pl-PL', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
       const jestKlatka = najblizszaKlatka(czasTeraz) === czasTeraz;
       etykieta.innerHTML = t + (jestKlatka ? ' <span class="text-red-400 text-xs">● klatka</span>' : '');
     }
@@ -904,7 +1008,6 @@
                   
                   if (typ === 'Point' && props.name) {
                       
-                      // ZAPIS BITWY
                       if (props.iconType === 'battle') {
                           sameGranice.push(feature); 
 
@@ -931,7 +1034,6 @@
                               battlesMap.set(props.name, true);
                           }
                       } 
-                      // ZAPIS JEDNOSTEK
                       else {
                           let unitId;
                           if (!unitsMap.has(props.name)) {
@@ -972,7 +1074,6 @@
               if (posErr) throw new Error("Błąd zapisu pozycji: " + posErr.message);
           }
 
-          // ZAPIS ROZKAZÓW Z PAMIĘCI
           if (lokalneRozkazy.length > 0) {
               const dbOrders = [];
               for (const r of lokalneRozkazy) {
@@ -982,6 +1083,7 @@
                           unit_id: uId,
                           issued_at: r.issued_at,
                           valid_from: r.valid_from,
+                          valid_until: r.valid_until,
                           order_type: r.order_type,
                           description: r.description,
                           target_latitude: r.target_latitude,
