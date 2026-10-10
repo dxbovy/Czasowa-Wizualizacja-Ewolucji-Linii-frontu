@@ -50,7 +50,7 @@
   </header>
 
   <div class="flex flex-1 relative">
-    <!-- Panel boczny -->
+    <!-- Panel boczny: Frakcje i Narzędzia -->
     <aside class="w-64 bg-tactical-950 border-r border-tactical-700 flex flex-col shrink-0 z-10 shadow-2xl relative">
       <div class="p-4 flex-1 overflow-y-auto">
         <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Zarządzanie Siłami</h3>
@@ -112,7 +112,6 @@
         <button id="czas-dzien-dalej" class="text-xs px-2 py-1 bg-tactical-800 hover:bg-tactical-700 rounded">+1d</button>
       </div>
     </div>
-    
     <div class="relative pt-1">
       <input type="range" id="czas-suwak" min="0" value="0" step="1" class="w-full h-1 bg-tactical-700 rounded-lg appearance-none cursor-pointer accent-tactical-accent">
       <div id="czas-znaczniki" class="absolute top-0 w-full h-1 pointer-events-none opacity-50"></div>
@@ -130,10 +129,6 @@
         <button onclick="window.wybierzIkone('kwadrat')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm"><span class="text-lg">⬛</span> Sztab / Kwadrat</button>
         <button onclick="window.wybierzIkone('kolo')" class="bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 p-2 rounded text-sm col-span-2"><span class="text-lg">🔴</span> Inne / Koło</button>
       </div>
-      <div class="bg-tactical-950 p-3 rounded border border-dashed border-tactical-600 text-xs text-slate-400 mb-4 text-center">
-        Własna grafika (PNG/JPG):<br>
-        <input type="file" id="custom-icon-upload" accept="image/*" class="mt-2 w-full text-slate-500 file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-xs file:bg-tactical-800 file:text-white">
-      </div>
       <button onclick="window.anulujDodawanie()" class="w-full py-2 bg-red-900/30 hover:bg-red-600 text-red-200 hover:text-white border border-red-800 rounded transition-colors text-sm font-bold">
         ❌ Anuluj
       </button>
@@ -149,14 +144,6 @@
 
   <!-- LOGIKA EDYTORA -->
   <script>
-    // Narzędzie do bezpiecznego generowania UUID w każdej przeglądarce
-    function generateUUID() {
-        if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
-        return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-            (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-        );
-    }
-
     // 1. Inicjalizacja Bazy i Czasu
     const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
@@ -193,32 +180,24 @@
     let nazwyPermanentne = false; 
     let klatki = {}; 
 
-    // Tworzymy poprawne klucze bazodanowe (UUID) dla domyślnych frakcji
-    const fallbackPlId = generateUUID();
-    const fallbackDeId = generateUUID();
-    const fallbackSuId = generateUUID();
-    const fallbackNeId = generateUUID();
+    // Gwarantujemy, że domyślne frakcje dostaną od razu poprawne UUID z poziomu JS
+    const idPL = crypto.randomUUID();
+    const idDE = crypto.randomUUID();
+    const idSU = crypto.randomUUID();
+    const idNeutral = crypto.randomUUID();
 
+    // Kluczem w słowniku JEST UUID! (Żadnych skrótów typu "pl")
     let frakcje = {
-        [fallbackPlId]: { nazwa: 'Polska', kolor: '#e63946' },
-        [fallbackDeId]: { nazwa: 'Niemcy', kolor: '#495057' },
-        [fallbackSuId]: { nazwa: 'ZSRR', kolor: '#d9480f' },
-        [fallbackNeId]: { nazwa: 'Neutralne', kolor: '#adb5bd' },
+        [idPL]: { nazwa: 'Polska', kolor: '#e63946' },
+        [idDE]: { nazwa: 'Niemcy', kolor: '#495057' },
+        [idSU]: { nazwa: 'ZSRR', kolor: '#d9480f' },
+        [idNeutral]: { nazwa: 'Neutralne', kolor: '#adb5bd' },
     };
-    let aktywnaFrakcja = fallbackPlId;
+    let aktywnaFrakcja = idPL;
 
+    // 4. ŁADOWANIE DANYCH Z BAZY (Z REKONSTRUKCJĄ)
     async function loadBattleData() {
-      // KROK 1: Najpierw pobieramy tymczasowy cache z przeglądarki (Local Storage)
-      try {
-        const zapis = JSON.parse(localStorage.getItem('kampania-autozapis-'+BATTLE_ID));
-        if (zapis?.klatki) { 
-           klatki = zapis.klatki; 
-           if(zapis.frakcje) frakcje = zapis.frakcje; // Może zawierać stare UUID
-        }
-      } catch(err) {}
-
-      // KROK 2: Wczytanie ram czasowych bitwy z tabeli campaigns
-      const { data: b, error } = await db.from('campaigns').select('*').eq('id', BATTLE_ID).single();
+      const { data: b } = await db.from('campaigns').select('*').eq('id', BATTLE_ID).single();
       if(b) {
         battleData = b;
         document.getElementById('battle-title').innerText = "Edytor: " + b.name;
@@ -228,26 +207,101 @@
         document.getElementById('czas-suwak').max = Math.round((CZAS_KONIEC - CZAS_START) / GODZINA);
       }
 
-      // KROK 3: POBRANIE FRAKCJI (To NADPISZE cache przeglądarki prawidłowymi danymi z chmury!)
+      // Pobieranie nadpisanych/istniejących frakcji (jeśli są)
       const { data: s } = await db.from('sides').select('*').eq('campaigns_id', BATTLE_ID);
       if(s && s.length > 0) {
-        frakcje = {}; // Czyścimy słownik
+        frakcje = {}; // Czyścimy domyślne - ufamy bazie
         s.forEach(side => {
-           // WAŻNE: Kluczem jest teraz prawidłowy, długi identyfikator UUID z bazy!
+           // Bezpośrednio używamy prawidłowego UUID jako klucza!
            frakcje[side.id] = { nazwa: side.name, kolor: side.color };
         });
-        aktywnaFrakcja = Object.keys(frakcje)[0]; // Ustaw na pierwszą z brzegu
-      } else {
         aktywnaFrakcja = Object.keys(frakcje)[0];
       }
+
+      let bazoweKlatki = {};
+
+      if (b && b.map_config && b.map_config.borders_timeline) {
+          for (const [timestamp, features] of Object.entries(b.map_config.borders_timeline)) {
+              bazoweKlatki[timestamp] = { type: "FeatureCollection", features: features };
+          }
+      }
+
+      const { data: unitsData } = await db.from('units').select('*').eq('campaigns_id', BATTLE_ID);
+      if (unitsData && unitsData.length > 0) {
+          const unitIds = unitsData.map(u => u.id);
+          const { data: posData } = await db.from('unit_positions').select('*').in('unit_id', unitIds);
+          
+          if (posData && posData.length > 0) {
+              posData.forEach(pos => {
+                  const unit = unitsData.find(u => u.id === pos.unit_id);
+                  if (!unit) return;
+
+                  const ts = new Date(pos.recorded_at).getTime().toString();
+                  if (!bazoweKlatki[ts]) bazoweKlatki[ts] = { type: "FeatureCollection", features: [] };
+
+                  bazoweKlatki[ts].features.push({
+                      type: "Feature",
+                      properties: {
+                          name: unit.name,
+                          frakcja: unit.side_id, // side_id to bezpośrednio prawidłowe UUID
+                          iconType: unit.symbol !== 'none' ? unit.symbol : unit.unit_type
+                      },
+                      geometry: {
+                          type: "Point",
+                          coordinates: [pos.longitude, pos.latitude]
+                      }
+                  });
+              });
+          }
+      }
+
+      if (Object.keys(bazoweKlatki).length > 0) {
+          klatki = bazoweKlatki;
+      } else {
+          try {
+              const zapis = JSON.parse(localStorage.getItem('kampania-autozapis-'+BATTLE_ID));
+              if (zapis?.klatki) { klatki = zapis.klatki; Object.assign(frakcje, zapis.frakcje || {}); }
+          } catch(err) {}
+      }
+
+      // Niezwykle ważna funkcja weryfikująca zepsute stare zapisy ("pl", "de")
+      naprawRelacjeFrakcji();
 
       odswiezListeFrakcji();
       odswiezZnaczniki();
       ustawCzas(CZAS_START);
     }
+
+    // MAPOWANIE: Automatycznie zamienia stare skróty "pl" / "de" na poprawne UUID z nowej puli
+    function naprawRelacjeFrakcji() {
+        const nameToId = {};
+        for (const [id, f] of Object.entries(frakcje)) {
+            nameToId[f.nazwa.toLowerCase()] = id;
+        }
+        const oldMap = { 'pl': 'polska', 'de': 'niemcy', 'su': 'zsrr', 'neutral': 'neutralne' };
+        
+        for (const stan of Object.values(klatki)) {
+            if (!stan.features) continue;
+            for (const feature of stan.features) {
+                let fr = feature.properties?.frakcja;
+                if (!fr) continue;
+                
+                // Jeśli klucz (fr) nie znajduje się w obecnym rejestrze UUID
+                if (!frakcje[fr]) {
+                    let expectedName = oldMap[fr] ? oldMap[fr] : null;
+                    if (expectedName && nameToId[expectedName]) {
+                        feature.properties.frakcja = nameToId[expectedName];
+                    } else {
+                        feature.properties.frakcja = Object.keys(frakcje)[0]; // Ratunkowe przypięcie
+                    }
+                }
+            }
+        }
+    }
+
     loadBattleData();
 
-    // 4. Narzędzia Mapy
+    // 5. Narzędzia Mapy
     function zapiszStan(tylkoHistoria = false) {
       const features = map.pm.getGeomanLayers().map(layer => layer.toGeoJSON());
       const stan = { type: "FeatureCollection", features };
@@ -294,11 +348,12 @@
           if (nazwa) {
               layer.bindTooltip(nazwa, { 
                   permanent: nazwyPermanentne, 
-                  sticky: !nazwyPermanentne,
+                  sticky: !nazwyPermanentne, 
                   direction: 'center',
                   className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" 
               });
           }
+          
           dodajEdycjeIKlikanie(layer);
       });
     }
@@ -338,6 +393,7 @@
           if (nowaNazwa !== null) {
               layer.feature = layer.feature || { type: "Feature", properties: {} };
               layer.feature.properties.name = nowaNazwa;
+              
               layer.unbindTooltip();
               layer.bindTooltip(nowaNazwa, { 
                   permanent: nazwyPermanentne, 
@@ -411,7 +467,7 @@
       const f = frakcje[id];
       if (!f) return;
       layer.feature = layer.feature || { type: "Feature", properties: {} };
-      layer.feature.properties.frakcja = id; // Przypisujemy długi UUID z bazy do obiektu mapy
+      layer.feature.properties.frakcja = id;
 
       if (layer instanceof L.Marker) {
           if (layer.feature.properties.iconType) zastosujIkone(layer, layer.feature.properties.iconType, layer.feature.properties.iconUrl);
@@ -424,7 +480,7 @@
       }
     }
 
-    // 5. Wydarzenia Geoman i Tworzenie Markerów
+    // 6. Wydarzenia Geoman i Tworzenie Markerów
     let oczekujacyMarker = null;
     map.on('pm:create', (e) => {
       const layer = e.layer;
@@ -452,14 +508,6 @@
     window.wybierzIkone = function (typ) { zastosujIkone(oczekujacyMarker, typ, null); zamknijModalIDokoncz(); }
     window.anulujDodawanie = function () { document.getElementById('icon-modal').style.display = 'none'; if (oczekujacyMarker) { map.removeLayer(oczekujacyMarker); oczekujacyMarker = null; } }
     
-    document.getElementById('custom-icon-upload').addEventListener('change', function (e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function (event) { zastosujIkone(oczekujacyMarker, 'custom', event.target.result); zamknijModalIDokoncz(); document.getElementById('custom-icon-upload').value = ''; }
-      reader.readAsDataURL(file);
-    });
-
     function zastosujIkone(layer, typ, url) {
       layer.feature = layer.feature || { type: "Feature", properties: {} };
       layer.feature.properties.iconType = typ;
@@ -529,7 +577,7 @@
         });
     });
 
-    // 6. Zarządzanie Panelem Frakcji
+    // 7. Zarządzanie Panelem Frakcji
     const selectFrakcji = document.getElementById('frakcja-select');
     const kolorInput = document.getElementById('frakcja-kolor');
     const malujBtn = document.getElementById('maluj-btn');
@@ -553,7 +601,7 @@
     
     document.getElementById('dodaj-frakcje-btn').addEventListener('click', () => {
       const nazwa = prompt("Nazwa nowej frakcji:"); if (!nazwa) return;
-      const id = generateUUID(); // Generuje nowy, prawdziwy UUID na starcie
+      const id = crypto.randomUUID(); // Nowe frakcje również dostają poprawne UUID od razu
       const losowy = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
       frakcje[id] = { nazwa, kolor: losowy }; aktywnaFrakcja = id;
       odswiezListeFrakcji(); autozapis();
@@ -566,7 +614,7 @@
       document.getElementById('map').style.cursor = trybMalowania ? 'crosshair' : '';
     });
 
-    // 7. Oś Czasu
+    // 8. Oś Czasu
     const suwak = document.getElementById('czas-suwak');
     const etykieta = document.getElementById('czas-etykieta');
     const znaczniki = document.getElementById('czas-znaczniki');
@@ -631,7 +679,7 @@
       }, 300);
     });
 
-    // 8. Import / Export Local
+    // 9. Import / Export Local
     document.getElementById('export-btn').addEventListener('click', () => {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ format: "kampania-v2", frakcje, klatki }));
       const a = document.createElement('a'); a.href = dataStr; a.download = `kampania_${BATTLE_ID}.json`; document.body.appendChild(a); a.click(); a.remove();
@@ -645,14 +693,16 @@
       reader.onload = (e) => {
           try {
               const d = JSON.parse(e.target.result);
+              
               if (d.frakcje || d.klatki) { 
                   if (d.frakcje) { Object.assign(frakcje, d.frakcje); odswiezListeFrakcji(); }
-                  if (d.klatki) { klatki = d.klatki; autozapis(); odswiezZnaczniki(); ustawCzas(czasTeraz); }
+                  if (d.klatki) { klatki = d.klatki; naprawRelacjeFrakcji(); autozapis(); odswiezZnaczniki(); ustawCzas(czasTeraz); }
               } 
               else if (d.type === "FeatureCollection" || d.features) {
                   const obecne = map.pm.getGeomanLayers().map(l => l.toGeoJSON());
                   odtworzStan({ type: "FeatureCollection", features: [...obecne, ...d.features] });
                   zapiszStan();
+                  
                   const tempLayer = L.geoJSON(d);
                   map.fitBounds(tempLayer.getBounds());
               }
@@ -663,33 +713,49 @@
       reader.readAsText(file);
       e.target.value = ''; 
     });
-    
-// 9. ZAPIS DO SUPABASE Z KREATORA!
+
+    // 10. ZAPIS DO BAZY SUPABASE
     document.getElementById('export-db-btn').addEventListener('click', async () => {
       if (Object.keys(klatki).length === 0) return alert("Brak klatek do eksportu!");
       const btn = document.getElementById('export-db-btn');
       btn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> Wysyłanie..."; btn.classList.add("bg-yellow-600");
 
-      // ZABEZPIECZENIE: Funkcja sprawdzająca czy ID jest w 100% poprawnym formatem UUID
-      const isValidUUID = (uuid) => {
-          return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
-      };
+      // Funkcja sprawdzająca czy klucz jest autentycznym UUID
+      const isValidUUID = (uuid) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
 
       try {
-          // 1. Aktualizacja Frakcji
-          for (const [key, f] of Object.entries(frakcje)) {
-              // Jeśli frakcja nie ma ID albo przeglądarka zapamiętała bzdurę (np. "pl")
-              if (!f._realId || !isValidUUID(f._realId)) {
-                  f._realId = crypto.randomUUID(); // Tworzy od nowa prawidłowe UUID
-              }
+          // --- 1. KRYTYCZNA NAPRAWA: Oczyszczanie starych kluczy ("pl", "de") ---
+          const czysteFrakcje = {};
+          for (const [oldKey, f] of Object.entries(frakcje)) {
+              let safeKey = oldKey;
               
+              // Jeśli klucz z local storage to bzdura (np. "pl")
+              if (!isValidUUID(safeKey)) {
+                  safeKey = crypto.randomUUID(); // Generujemy nowy, prawdziwy UUID
+                  
+                  // Ważne: Zmieniamy przypisanie do frakcji we wszystkich jednostkach na osi czasu!
+                  for (const stan of Object.values(klatki)) {
+                      if (!stan.features) continue;
+                      for (const feature of stan.features) {
+                          if (feature.properties && feature.properties.frakcja === oldKey) {
+                              feature.properties.frakcja = safeKey;
+                          }
+                      }
+                  }
+              }
+              czysteFrakcje[safeKey] = f;
+          }
+          frakcje = czysteFrakcje; // Nadpisujemy zepsuty słownik tym naprawionym
+          odswiezListeFrakcji(); // Odświeżamy listę rozwijaną
+
+          // --- 2. ZAPIS FRAKCJI DO BAZY ---
+          for (const [key, f] of Object.entries(frakcje)) {
               const { error: sideErr } = await db.from('sides').upsert({ 
-                  id: f._realId, 
+                  id: key, 
                   campaigns_id: BATTLE_ID, 
                   name: f.nazwa, 
                   color: f.kolor 
               });
-              
               if (sideErr) throw new Error("Błąd zapisu frakcji: " + sideErr.message);
           }
 
@@ -697,7 +763,7 @@
           const pozycjeDoBazy = [];
           const graniceWKlatkach = {};
 
-          // 2. Parsowanie Klatek (Snapshotów)
+          // --- 3. ZAPIS JEDNOSTEK, GRANIC I OŚ CZASU ---
           for (const [timestamp, stan] of Object.entries(klatki)) {
               const recordedAt = new Date(Number(timestamp)).toISOString();
               const sameGranice = [];
@@ -711,9 +777,8 @@
                   if (typ === 'Point' && props.name) {
                       let unitId;
                       if (!unitsMap.has(props.name)) {
-                          // Bezpieczne pobranie ID frakcji dla jednostki
-                          const f = frakcje[props.frakcja];
-                          const sideId = (f && isValidUUID(f._realId)) ? f._realId : Object.values(frakcje)[0]._realId;
+                          // Pobieramy wyczyszczone ID frakcji
+                          const sideId = props.frakcja && frakcje[props.frakcja] ? props.frakcja : Object.keys(frakcje)[0];
                           
                           let { data: existingUnit, error: checkErr } = await db.from('units')
                               .select('id')
@@ -760,13 +825,13 @@
 
           btn.innerHTML = "<i class='fa-solid fa-check'></i> Zapisano"; btn.classList.replace("bg-yellow-600", "bg-green-600");
           
-          // ZABEZPIECZENIE: Wymuszamy autozapis na koniec, by przeglądarka podmieniła błędne ID w swojej pamięci na te nowe, poprawne
-          autozapis();
-
+          // Wymuszamy autozapis by naprawione dane nadpisały śmieci w Local Storage
+          autozapis(); 
+          
           setTimeout(() => { btn.innerHTML = "<i class='fa-solid fa-cloud-arrow-up'></i> Zapisz do Bazy"; btn.classList.remove("bg-green-600"); }, 3000);
       } catch (err) {
           console.error("Szczegóły błędu:", err);
-          alert("Błąd zapisu: " + err.message); 
+          alert(err.message); 
           btn.innerHTML = "❌ Błąd"; 
           btn.classList.replace("bg-yellow-600", "bg-red-600");
       }
