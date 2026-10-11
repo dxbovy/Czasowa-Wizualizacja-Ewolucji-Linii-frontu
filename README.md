@@ -1,4 +1,4 @@
-# CWEL(f) – Czasowa Wizualizacja Ewolucji Linii (frontu)
+# Czasowa Wizualizacja Ewolucji Linii (frontu)
 
 > **Interaktywna platforma do chronologicznej rekonstrukcji starć zbrojnych oraz wizualizacji dynamiki teatru działań wojennych.**
 
@@ -8,7 +8,7 @@
 
 Tradycyjne mapy historyczne w podręcznikach i atlasach są **statyczne, przeładowane informacjami i nieczytelne dla laika**. Zrozumienie manewrów oskrzydlających, tempa natarcia czy odwrotu jednostek z dziesiątek nałożonych na siebie wektorów wymaga wiedzy eksperckiej.
 
-**CWEL(f)** rozwiązuje ten problem:
+**Nasza aplikacja** rozwiązuje ten problem:
 * **Przystępność dla każdego:** Przekształca suche fakty historyczne w interaktywną symulację czasoprzestrzenną, idealną do zastosowań edukacyjnych w szkołach.
 * **Dynamika w czasie:** Umożliwia płynne przesuwanie suwaka osi czasu, ukazując ewolucję linii frontu godzina po godzinie.
 * **Głębia taktyczna:** Każda jednostka posiada własną historię rozkazów, stan liczebny oraz wektory ruchu.
@@ -52,6 +52,7 @@ Struktura bazy danych została zaprojektowana z myślą o efektywnej obsłudze d
 
 # Szczegółowa dokumentacja bazy danych
 
+
 # 1. Jakie są tabele
 
 | Nr  | Tabela           | Do czego służy?                                    |
@@ -62,16 +63,16 @@ Struktura bazy danych została zaprojektowana z myślą o efektywnej obsłudze d
 | 4   | `unit_positions` | Pozycje jednostek w określonych momentach          |
 | 5   | `orders`         | Rozkazy wydawane jednostkom                        |
 | 6   | `unit_events`    | Inne wydarzenia historyczne, np. utrata jednostki  |
-|     |                  |                                                    |
+| 7   | campaigns        | informacje o kampaniach np. kampania wrześniowa    |
 
 
 ---
 
 # 2. Struktura poszczególnych tabel
 
-## Tabela 1: `battles`
+## Tabela 1: `campaigns`
 
-Przechowuje informacje o bitwach dostępnych w menu głównym.
+Przechowuje informacje o kampaniach dostępnych w menu głównym.
 
 | Pole          | Typ danych   | Opis                    |
 | ------------- | ------------ | ----------------------- |
@@ -81,26 +82,42 @@ Przechowuje informacje o bitwach dostępnych w menu głównym.
 | `start_time`  | TIMESTAMPTZ  | Początek bitwy          |
 | `end_time`    | TIMESTAMPTZ  | Koniec bitwy            |
 | `created_at`  | TIMESTAMPTZ  | Data utworzenia rekordu |
+|               |              |                         |
 
 **Przykładowy rekord:**
 
-| id         | name    | description                        |
-| ---------- | ------- | ---------------------------------- |
-| `uuid-001` | Bitwa A | Przykładowy scenariusz historyczny |
+| id         | name        | description                        |
+| ---------- | ----------- | ---------------------------------- |
+| `uuid-001` | kampania  A | Przykładowy scenariusz historyczny |
 
-Ta tabela pozwala wyświetlić listę bitew w menu i określić zakres dostępnego czasu na osi chronologicznej.
+Ta tabela pozwala wyświetlić listę kampanii w menu i określić zakres dostępnego czasu na osi chronologicznej.
 
-## Tabela 2: `sides`
+
+## Tabela : `battles`
+
+|Kolumna|Typ|Znaczenie|Przykład|
+|---|---|---|---|
+|`id`|`BIGINT`|Unikalny identyfikator bitwy|`1`|
+|`name`|`TEXT`|Nazwa bitwy lub operacji wojskowej|`Bitwa pod Mokrą`|
+|`description`|`TEXT`|Opis wydarzenia|`Starcie Wołyńskiej Brygady Kawalerii z niemiecką 4. Dywizją Pancerną`|
+|`start_date`|`DATE`|Data rozpoczęcia|`1939-09-01`|
+|`end_date`|`DATE`|Data zakończenia|`1939-09-01`|
+|`location`|`TEXT`|Miejsce wydarzenia|`Mokra, Polska`|
+|`latitude`|`DOUBLE PRECISION`|Szerokość geograficzna|`51.06`|
+|`longitude`|`DOUBLE PRECISION`|Długość geograficzna|`18.70`|
+|`result`|`TEXT`|Wynik bitwy|`Taktyczne zwycięstwo polskie`|
+|`created_at`|`TIMESTAMPTZ`|Data utworzenia rekordu|Uzupełniana automatycznie|
+## Tabela 3: `sides`
 
 Przechowuje strony konfliktu. Dzięki temu możecie przypisać jednostki do odpowiednich stron i odróżniać je kolorami na mapie.
 
-| Pole          | Typ danych   | Opis                           |
-| ------------- | ------------ | ------------------------------ |
-| `id`          | UUID         | Klucz główny                   |
-| `battle_id`   | UUID         | Bitwa, do której należy strona |
-| `name`        | VARCHAR(100) | Nazwa strony                   |
-| `color`       | VARCHAR(7)   | Kolor w formacie HEX           |
-| `description` | TEXT         | Opis strony                    |
+| Pole           | Typ danych   | Opis                              |
+| -------------- | ------------ | --------------------------------- |
+| `id`           | UUID         | Klucz główny                      |
+| `campaigns_id` | UUID         | Kampania, do której należy strona |
+| `name`         | VARCHAR(100) | Nazwa strony                      |
+| `color`        | VARCHAR(7)   | Kolor w formacie HEX              |
+| `description`  | TEXT         | Opis strony                       |
 
 **Przykładowe rekordy:**
 
@@ -111,19 +128,19 @@ Przechowuje strony konfliktu. Dzięki temu możecie przypisać jednostki do odpo
 
 Relacja: jedna bitwa może mieć wiele stron konfliktu.
 
-## Tabela 3: `units`
+## Tabela 4: `units`
 
 Przechowuje informacje o jednostkach wojskowych.
 
-| Pole         | Typ danych   | Opis                                  |
-| ------------ | ------------ | ------------------------------------- |
-| `id`         | UUID         | Klucz główny                          |
-| `battle_id`  | UUID         | Bitwa, w której uczestniczy jednostka |
-| `side_id`    | UUID         | Strona konfliktu                      |
-| `name`       | VARCHAR(150) | Nazwa jednostki                       |
-| `unit_type`  | VARCHAR(50)  | Typ jednostki, np. batalion           |
-| `symbol`     | VARCHAR(50)  | Symbol wyświetlany na mapie           |
-| `created_at` | TIMESTAMPTZ  | Data utworzenia rekordu               |
+| Pole           | Typ danych   | Opis                                     |
+| -------------- | ------------ | ---------------------------------------- |
+| `id`           | UUID         | Klucz główny                             |
+| `campaigns_id` | UUID         | kampania, w której uczestniczy jednostka |
+| `side_id`      | UUID         | Strona konfliktu                         |
+| `name`         | VARCHAR(150) | Nazwa jednostki                          |
+| `unit_type`    | VARCHAR(50)  | Typ jednostki, np. batalion              |
+| `symbol`       | VARCHAR(50)  | Symbol wyświetlany na mapie              |
+| `created_at`   | TIMESTAMPTZ  | Data utworzenia rekordu                  |
 
 **Przykładowe rekordy:**
 
@@ -137,7 +154,7 @@ Przechowuje informacje o jednostkach wojskowych.
 
 Dzięki temu mapa może pobierać wszystkie jednostki konkretnej bitwy i kolorować je zgodnie z przynależnością do strony konfliktu.
 
-## Tabela 4: `unit_positions`
+## Tabela 5: `unit_positions`
 
 **To najważniejsza tabela dla osi czasu.** Przechowuje pozycje jednostek w różnych momentach.
 
@@ -167,7 +184,7 @@ Jeśli użytkownik przesunie suwak na 11:00, aplikacja znajdzie pozycję tej jed
 
 **Ważne:** `heading` oznacza kierunek, w którym skierowana jest jednostka, a niekoniecznie kierunek jej ruchu. Jeśli potrzebujecie obu informacji, dodajcie osobne pole lub obliczajcie kierunek ruchu z kolejnych pozycji.
 
-## Tabela 5: `orders`
+## Tabela 6: `orders`
 
 Przechowuje rozkazy wydawane jednostkom.
 
@@ -202,7 +219,7 @@ Jeśli użytkownik ogląda godzinę 11:00, aplikacja pokaże rozkaz obowiązują
 
 Warto pamiętać, że jedna jednostka może mieć wiele rozkazów w trakcie bitwy.
 
-## Tabela 6: `unit_events`
+## Tabela 7: `unit_events`
 
 Przechowuje dodatkowe wydarzenia dotyczące jednostek.
 
@@ -222,6 +239,3 @@ Przykładowe typy wydarzeń:
 - `casualties` — straty;
 - `retreat` — odwrót;
 - `attachment` — przydzielenie do innej jednostki.
-
-
-

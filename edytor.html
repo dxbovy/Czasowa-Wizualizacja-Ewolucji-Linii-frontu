@@ -1461,7 +1461,7 @@
     // ---- Zapis granic: mały ładunek, żeby zmieścić się w limicie czasu zapytania w Supabase ----
     // Granice upraszczamy (tolerancja w stopniach, 0.002 ≈ 200 m). Ustaw 0, aby wyłączyć upraszczanie;
     // większa wartość (np. 0.01) = mniejsze dane. Gdy zapis kończy się timeoutem, zwiększ tę wartość.
-    const UPROSZCZENIE_GRANIC = 0.002;
+    const UPROSZCZENIE_GRANIC = 0.004;
     const ZACHOWANE_WLASCIWOSCI = ['name', 'NAME', 'SUBJECTO', 'frakcja', 'isArrow', 'color', 'description', 'result'];
 
     const jestPoligonem = f => f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon');
