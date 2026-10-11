@@ -83,6 +83,7 @@
           </button>
           <p class="text-[10px] text-slate-500 mt-2 leading-snug"><i class="fa-solid fa-object-group mr-1"></i>Aneksja: <b>Shift + klik</b> na dwa obszary łączy je w jedno (Esc anuluje).</p>
           <p class="text-[10px] text-slate-500 mt-1 leading-snug"><i class="fa-solid fa-user-slash mr-1"></i>Usunięcie z frakcji: wybierz <b>— Bez frakcji —</b>, włącz Tryb Malowania i kliknij obiekt.</p>
+          <label class="flex items-start gap-2 mt-2 text-[11px] text-slate-300 leading-snug cursor-pointer"><input type="checkbox" id="propaguj-granice" checked class="mt-0.5"><span>Zmiany granic i frakcji obowiązują w kolejnych klatkach <span class="text-slate-500">(odznacz, aby zmienić tylko bieżącą klatkę)</span></span></label>
         </div>
 
         <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 mt-6">Narzędzia Zapasowe</h3>
@@ -643,6 +644,7 @@
       return a.nazwa === b.nazwa && a.n === b.n && a.ramka.every((v, i) => Math.abs(v - b.ramka[i]) < 1e-4);
     }
     function propagujMalowanie(przed, stara, nowa) {
+      if (!propagowanieWlaczone()) return;
       const opis = opisObiektu(przed); if (!opis) return;
       const czasy = Object.keys(klatki).map(Number).filter(t => t > czasTeraz).sort((a, b) => a - b);
       let zmieniono = false;
@@ -661,6 +663,77 @@
         zmieniono = true;
       }
       if (zmieniono) autozapis();
+    }
+
+    // ---- GRANICE W CZASIE: zmiana obszarów obowiązuje także w kolejnych klatkach ----
+    // Klatka to pełna kopia stanu. Bez tej funkcji edycja (przesunięcie wierzchołków, cięcie, aneksja,
+    // nowy lub usunięty obszar) zmieniałaby tylko bieżącą klatkę, a w następnej granice wracałyby do starych.
+    // Porównujemy obszary przed i po zmianie, a potem stosujemy tę różnicę w kolejnych klatkach, dopóki
+    // zawierają one jeszcze "stare" obszary (czyli nikt nie zmienił tam granic świadomie).
+    const czyPoligon = f => !!(f && f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon'));
+    const nazwaObszaru = f => { const p = (f && f.properties) || {}; return p.name || p.NAME || p.SUBJECTO || ''; };
+    const _podpisyGeometrii = new WeakMap();
+    function podpisGeometrii(f) {
+      const g = f.geometry;
+      let sg = _podpisyGeometrii.get(g);
+      if (!sg) {
+        sg = { typ: g.type, n: 0, sx: 0, sy: 0, b: [Infinity, Infinity, -Infinity, -Infinity] };
+        (function przejdz(c) {
+          if (typeof c[0] === 'number') {
+            sg.n++; sg.sx += c[0]; sg.sy += c[1];
+            if (c[0] < sg.b[0]) sg.b[0] = c[0]; if (c[1] < sg.b[1]) sg.b[1] = c[1];
+            if (c[0] > sg.b[2]) sg.b[2] = c[0]; if (c[1] > sg.b[3]) sg.b[3] = c[1];
+          } else c.forEach(przejdz);
+        })(g.coordinates);
+        _podpisyGeometrii.set(g, sg);
+      }
+      return sg;
+    }
+    // Ten sam obszar = ta sama nazwa i frakcja oraz praktycznie ta sama geometria
+    // (tolerancja pokrywa różnice w zaokrągleniu współrzędnych między klatkami)
+    function taSamaGeometria(a, b) {
+      const pa = a.properties || {}, pb = b.properties || {};
+      if ((pa.frakcja || null) !== (pb.frakcja || null) || nazwaObszaru(a) !== nazwaObszaru(b)) return false;
+      const x = podpisGeometrii(a), y = podpisGeometrii(b);
+      if (x === y) return true;
+      if (x.typ !== y.typ || x.n !== y.n) return false;
+      const tol = 2e-6 * Math.sqrt(x.n) + 1e-6;
+      return Math.abs(x.sx - y.sx) <= tol && Math.abs(x.sy - y.sy) <= tol && x.b.every((v, i) => Math.abs(v - y.b[i]) < 1e-4);
+    }
+    function propagowanieWlaczone() { const el = document.getElementById('propaguj-granice'); return !el || el.checked; }
+
+    function propagujGranice(przed, po) {
+      if (!propagowanieWlaczone()) return 0;
+      const O = (przed || []).filter(czyPoligon), N = (po || []).filter(czyPoligon);
+      // R = obszary, które zniknęły lub się zmieniły; A = obszary, które doszły lub są nowe po zmianie
+      const R = O.slice(), A = [];
+      for (const n of N) { const i = R.findIndex(o => taSamaGeometria(o, n)); if (i >= 0) R.splice(i, 1); else A.push(n); }
+      if (!R.length && !A.length) return 0;
+
+      const czasy = Object.keys(klatki).map(Number).filter(t => t > czasTeraz).sort((a, b) => a - b);
+      let zmienione = 0;
+      for (const t of czasy) {
+        const feats = (klatki[t] && klatki[t].features) || [];
+        const usun = new Set();
+        let komplet = true;
+        for (const r of R) {
+          const i = feats.findIndex((f, idx) => !usun.has(idx) && czyPoligon(f) && taSamaGeometria(r, f));
+          if (i < 0) { komplet = false; break; }
+          usun.add(i);
+        }
+        if (!komplet) break;      // w tej klatce granice zmieniono świadomie – dalej nie zmieniamy
+
+        const kopie = A.filter(a => !feats.some((f, idx) => !usun.has(idx) && czyPoligon(f) && taSamaGeometria(a, f)))
+                       .map(a => ({ ...a, properties: { ...(a.properties || {}) } }));
+        const nowe = [];
+        let wstawione = false;
+        const wstaw = () => { if (!wstawione) { nowe.push(...kopie); wstawione = true; } };
+        feats.forEach((f, idx) => { if (usun.has(idx)) wstaw(); else nowe.push(f); });   // nowe obszary w miejscu pierwszego usuniętego
+        wstaw();
+        klatki[t] = { ...klatki[t], features: nowe };
+        zmienione++;
+      }
+      return zmienione;
     }
 
     function dodajEdycjeIKlikanie(layer) {
@@ -1068,7 +1141,13 @@
       const dokladna = klucz === czasTeraz;
       const poprzednia = klucz !== null ? klatki[klucz] : { features: [] };
       const taSama = JSON.stringify(poprzednia.features) === JSON.stringify(stan.features);
-      if (dokladna || !taSama) { klatki[czasTeraz] = stan; autozapis(); odswiezZnaczniki(); odswiezEtykiete(); }
+      if (dokladna || !taSama) {
+        const przed = poprzednia.features;
+        klatki[czasTeraz] = stan;
+        const ile = propagujGranice(przed, stan.features);      // granice/obszary: zmiana obowiązuje w kolejnych klatkach
+        if (ile > 0) pokazKomunikat('Zmianę granic zastosowano także w ' + ile + ' kolejnych klatkach.');
+        autozapis(); odswiezZnaczniki(); odswiezEtykiete();
+      }
     }
 
     function autozapis() { try { localStorage.setItem('kampania-autozapis-'+BATTLE_ID, JSON.stringify({ frakcje, klatki, rozkazy: lokalneRozkazy })); } catch (e) {} }
@@ -1255,11 +1334,16 @@
     }
     function takieSameObszary(a, b) {
       if (a.length !== b.length) return false;
+      let tenSamPorzadek = true;
       for (let i = 0; i < a.length; i++) {
-        if (a[i].geometry !== b[i].geometry && JSON.stringify(a[i].geometry) !== JSON.stringify(b[i].geometry)) return false;
-        if (JSON.stringify(a[i].properties || {}) !== JSON.stringify(b[i].properties || {})) return false;
+        if (a[i].geometry !== b[i].geometry && JSON.stringify(a[i].geometry) !== JSON.stringify(b[i].geometry)) { tenSamPorzadek = false; break; }
+        if (JSON.stringify(a[i].properties || {}) !== JSON.stringify(b[i].properties || {})) { tenSamPorzadek = false; break; }
       }
-      return true;
+      if (tenSamPorzadek) return true;
+      // ta sama zawartość w innej kolejności też oznacza brak zmiany granic
+      const klucz = f => JSON.stringify(f.geometry) + '|' + JSON.stringify(f.properties || {});
+      const ka = a.map(klucz).sort(), kb = b.map(klucz).sort();
+      return ka.every((k, i) => k === kb[i]);
     }
 
     // Granice zapisujemy tylko w klatkach, w których się zmieniły (reszta jest uzupełniana przy wczytaniu).
