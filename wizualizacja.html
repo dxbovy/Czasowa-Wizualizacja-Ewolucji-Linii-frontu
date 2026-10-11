@@ -4,14 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CWEL(f) - Wizualizacja Taktyczna</title>
-  
+
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%2310b981' d='M384 476.1L192 421.2l-148.2 49.4C19.7 478.7 0 460.6 0 435.5V107.5c0-18.7 12.8-35 30.9-39.5l161.1-40.3 192 54.9 148.2-49.4c24.1-8 43.8 10.1 43.8 35.2v328c0 18.7-12.8 35-30.9 39.5L384 476.1zm-96-368.6c-44.2 0-80 35.8-80 80c0 40.8 66.8 126.9 74.4 136.6c2.8 3.6 8.3 3.6 11.2 0c7.6-9.7 74.4-95.8 74.4-136.6c0-44.2-35.8-80-80-80zm0 112a32 32 0 1 1 0-64 32 32 0 1 1 0 64z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Biblioteka do geometrii przestrzennej (Linia frontu) -->
-  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
   <script>
     tailwind.config = {
@@ -27,345 +25,609 @@
     .leaflet-control-zoom { border: none !important; }
     .leaflet-control-zoom a { background-color: #181920 !important; color: #10b981 !important; border-color: #262730 !important; }
 
-    /* Znaczniki jednostek */
-    .tactical-marker {
-      border-radius: 50%;
-      border: 2px solid white;
+    /* Znaczniki jednostek – ten sam wygląd co w edytorze */
+    .unit-badge {
+      width: 32px; height: 32px; box-sizing: border-box;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; color: #fff;
+      background: #262730; border: 3px solid #888; border-radius: 50%;
       box-shadow: 0 0 10px rgba(0,0,0,0.8);
-      transition: transform 0.2s ease;
       position: relative;
+      transition: transform 0.2s ease;
     }
-    .tactical-marker:hover { transform: scale(1.3); z-index: 1000 !important; }
-    .tactical-marker-selected {
-      border: 3px solid #10b981;
-      box-shadow: 0 0 15px #10b981;
-      animation: pulse 1.5s infinite;
-    }
+    .unit-badge:hover { transform: scale(1.2); }
+    .unit-badge.selected { box-shadow: 0 0 15px #10b981; outline: 2px solid #10b981; animation: pulse 1.5s infinite; }
 
-    /* Efekt Zniszczenia (Wrak) */
-    .tactical-marker-destroyed {
-      background-color: #1f2937 !important; /* Szary */
-      border: 2px solid #ef4444 !important; /* Czerwony */
-      opacity: 0.6;
+    /* Wrak */
+    .unit-badge.destroyed { background: #1f2937; border-color: #ef4444 !important; color: #6b7280; opacity: 0.7; }
+    .unit-badge.destroyed::after {
+      content: '✖'; color: #ef4444; font-size: 20px; font-weight: bold;
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     }
-    .tactical-marker-destroyed::after {
-      content: '✖';
-      color: #ef4444;
-      font-size: 10px;
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-    }
-
-    /* Wybuch przy momencie zniszczenia */
-    .explosion-effect {
+    /* Wybuch w chwili zniszczenia */
+    .unit-badge.exploding {
       box-shadow: 0 0 20px 10px #ef4444, 0 0 40px 20px #f59e0b !important;
-      background-color: #f59e0b !important;
-      border-color: #ffffff !important;
-      z-index: 9999 !important;
+      background: #f59e0b !important; border-color: #ffffff !important; color: #fff;
     }
+
+    /* Znacznik bitwy */
+    .battle-badge {
+      width: 50px; height: 50px; box-sizing: border-box;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; color: #fca5a5;
+      background: #262730; border: 3px solid #ef4444; border-radius: 50%;
+      cursor: pointer; transition: transform 0.2s ease;
+    }
+    .battle-badge:hover { transform: scale(1.15); }
+
+    .map-tooltip {
+      background: rgba(15,16,21,0.85) !important; color: #fff !important;
+      border: 1px solid #3b3d4a !important; border-radius: 4px !important;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+      padding: 3px 8px !important; box-shadow: 0 2px 8px rgba(0,0,0,0.6) !important;
+    }
+    .map-tooltip::before { display: none; }
 
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
       70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
       100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
     }
+    @media (prefers-reduced-motion: reduce) { .unit-badge.selected { animation: none; } }
   </style>
 </head>
 <body class="bg-tactical-950 text-slate-300 font-sans h-screen flex flex-col overflow-hidden">
 
   <!-- Topbar -->
   <header class="h-14 bg-tactical-900 border-b border-tactical-700 flex justify-between items-center px-4 shrink-0 z-20 shadow-md">
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-4 min-w-0">
       <a href="bitwy.html" class="text-slate-400 hover:text-white transition-colors" title="Wróć do bazy"><i class="fa-solid fa-arrow-left"></i></a>
-      <h1 id="battle-title" class="text-white font-bold tracking-wide">Ładowanie danych misji...</h1>
+      <h1 id="battle-title" class="text-white font-bold tracking-wide truncate">Ładowanie danych misji...</h1>
     </div>
-    <div class="flex items-center gap-3">
-      <span class="text-xs font-bold text-blue-400 bg-blue-900/30 px-2 py-1 rounded border border-blue-500/30">Symulacja Przestrzenna Aktywna</span>
+    <div class="flex items-center gap-3 shrink-0">
+      <span id="header-badge" class="hidden sm:inline text-xs font-bold text-blue-400 bg-blue-900/30 px-2 py-1 rounded border border-blue-500/30">Symulacja Przestrzenna Aktywna</span>
+      <button id="toggle-names-btn" class="px-3 py-1.5 bg-tactical-800 hover:bg-tactical-700 border border-tactical-700 text-xs rounded transition-colors">
+        <i class="fa-regular fa-eye"></i> <span class="hidden sm:inline">Pokaż/Ukryj Nazwy</span>
+      </button>
     </div>
   </header>
 
   <div class="flex flex-1 overflow-hidden relative">
     <!-- Panel boczny -->
-    <aside id="side-panel" class="w-80 bg-tactical-950 border-r border-tactical-700 flex flex-col shrink-0 overflow-y-auto z-10 transition-transform transform -translate-x-full absolute h-full sm:relative sm:translate-x-0 shadow-2xl">
-      <div id="panel-content" class="p-6">
-        <div class="text-center text-slate-500 mt-10">
-          <i class="fa-solid fa-crosshairs text-4xl mb-4 text-tactical-700"></i>
-          <p>Kliknij jednostkę na mapie, aby odczytać jej dane i rozkazy.</p>
-        </div>
-      </div>
+    <aside id="side-panel" class="w-80 bg-tactical-950 border-r border-tactical-700 flex flex-col shrink-0 overflow-y-auto z-30 transition-transform transform -translate-x-full absolute h-full sm:relative sm:translate-x-0 shadow-2xl">
+      <div id="panel-content" class="p-6"></div>
     </aside>
 
     <!-- Mapa -->
     <main class="flex-1 relative bg-tactical-900" id="map-container">
       <div id="map" class="w-full h-full z-0"></div>
+      <div id="legend" class="hidden absolute bottom-6 left-4 z-[1000] bg-tactical-900/90 border border-tactical-700 rounded-lg px-3 py-2 text-xs shadow-lg"></div>
     </main>
   </div>
 
   <!-- Pasek Osi Czasu -->
-  <footer class="h-24 bg-tactical-900 border-t border-tactical-700 flex flex-col shrink-0 px-6 py-3 justify-center z-20 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.3)]">
-    <div class="flex justify-between text-xs text-slate-400 font-medium mb-2">
-      <span id="time-start">--:--</span>
-      <span class="text-white font-bold text-sm bg-tactical-800 px-3 py-1 rounded border border-tactical-700 shadow-inner">
+  <footer class="h-28 bg-tactical-900 border-t border-tactical-700 flex flex-col shrink-0 px-6 py-3 justify-center z-20 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.3)]">
+    <div class="flex justify-between items-center text-xs text-slate-400 font-medium mb-2 gap-2">
+      <span id="time-start" class="shrink-0">--</span>
+      <span class="text-white font-bold text-sm bg-tactical-800 px-3 py-1 rounded border border-tactical-700 shadow-inner text-center">
         <i class="fa-solid fa-clock text-tactical-accent mr-1"></i> <span id="time-current">Ładowanie...</span>
+        <span id="frame-flag" class="hidden text-red-400 text-xs ml-1">● klatka</span>
       </span>
-      <span id="time-end">--:--</span>
+      <span id="time-end" class="shrink-0">--</span>
     </div>
-    <div class="flex items-center gap-4">
-      <button id="btn-play" class="w-12 h-12 rounded-full bg-tactical-800 border border-tactical-700 hover:border-tactical-accent hover:text-tactical-accent text-white flex items-center justify-center transition-all shadow-lg">
+    <div class="flex items-center gap-3">
+      <button id="btn-prev-frame" title="Poprzednia klatka" class="w-9 h-9 rounded-full bg-tactical-800 border border-tactical-700 hover:border-tactical-accent hover:text-tactical-accent text-slate-300 flex items-center justify-center transition-colors shrink-0">
+        <i class="fa-solid fa-backward-step"></i>
+      </button>
+      <button id="btn-play" title="Odtwórz / Pauza" class="w-12 h-12 rounded-full bg-tactical-800 border border-tactical-700 hover:border-tactical-accent hover:text-tactical-accent text-white flex items-center justify-center transition-all shadow-lg shrink-0">
         <i class="fa-solid fa-play ml-1 text-xl"></i>
       </button>
-      <input type="range" id="timeline-slider" min="0" max="100" value="0" class="flex-1 h-2 bg-tactical-800 rounded-lg appearance-none cursor-pointer accent-tactical-accent">
+      <button id="btn-next-frame" title="Następna klatka" class="w-9 h-9 rounded-full bg-tactical-800 border border-tactical-700 hover:border-tactical-accent hover:text-tactical-accent text-slate-300 flex items-center justify-center transition-colors shrink-0">
+        <i class="fa-solid fa-forward-step"></i>
+      </button>
+
+      <div class="relative flex-1 pt-3">
+        <div id="timeline-ticks" class="absolute top-0 left-0 w-full h-2 pointer-events-none"></div>
+        <input type="range" id="timeline-slider" min="0" max="100" value="0" class="w-full h-2 bg-tactical-800 rounded-lg appearance-none cursor-pointer accent-tactical-accent">
+      </div>
+
+      <select id="speed-select" title="Szybkość odtwarzania" class="bg-tactical-800 text-white border border-tactical-600 rounded p-1 text-xs focus:outline-none focus:border-tactical-accent shrink-0">
+        <option value="1">1 h/s</option>
+        <option value="6">6 h/s</option>
+        <option value="12" selected>12 h/s</option>
+        <option value="24">1 d/s</option>
+        <option value="72">3 d/s</option>
+      </select>
     </div>
   </footer>
 
   <!-- Skrypty -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Klient Supabase (musi leżeć w tym samym folderze co ten plik) -->
+  <script src="supabaseClient.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script>
-    // Konfiguracja Supabase
-    const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
-    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Klient bazy pochodzi z supabaseClient.js (window.supabaseClient).
+    // Dla starszej wersji pliku próbujemy też zmiennej globalnej "supabase".
+    const db = window.supabaseClient ||
+      (typeof supabase !== 'undefined' && typeof supabase.from === 'function' ? supabase : null);
 
-    let battle = null;
+    // ---------- Stałe i słowniki ----------
+    const GODZINA = 3600000;
+    const TICK_MS = 40;                    // odświeżanie odtwarzania (~25 FPS)
+    const EXPLOSION_MS = 6 * GODZINA;      // jak długo trwa wybuch po zniszczeniu jednostki
+
+    const ICONS = {
+      army: 'fa-solid fa-shield-halved', cavalry: 'fa-solid fa-horse-head', corps: 'fa-solid fa-cubes',
+      fortress: 'fa-brands fa-fort-awesome', front: 'fa-solid fa-flag', garrison: 'fa-solid fa-building-shield',
+      group: 'fa-solid fa-people-group', naval: 'fa-solid fa-anchor', battle: 'fa-solid fa-explosion',
+      infantry: 'fa-solid fa-person-rifle', armor: 'fa-solid fa-truck-monster', recon: 'fa-solid fa-binoculars'
+    };
+    const ORDER_LABELS = {
+      move: 'Marsz / Przegrupowanie', attack: 'Atak', defend: 'Obrona', retreat: 'Odwrót', support: 'Wsparcie'
+    };
+    const TOOLTIP_CLASS = 'map-tooltip';
+
+    // ---------- Stan ----------
+    let campaign = null;
     let dataCache = { sides: [], units: [], positions: [], orders: [], events: [] };
+    let sideById = new Map();
+    let positionsByUnit = new Map();       // unitId -> [{...pozycja, t}] posortowane po czasie
+    let destroyedAt = new Map();           // unitId -> ms zniszczenia
+    let borderFrames = [];                 // [{t, features}] – klatki granic i bitew z campaigns.map_config
+    let allFrameTimes = [];                // wszystkie momenty z klatkami (granice + pozycje)
+
     let map = null;
-    let markers = {}; 
+    let markers = {};
+    let battlesLayer = null;
+    let areasLayer = null;                 // granice państw / obszary frakcji (wielokąty z edytora)
+    let currentBorderIdx = -2;
+    let currentAreaSrc = -2;               // z której klatki pochodzą aktualnie narysowane granice
     let targetLine = null;
-    let territoryLayer = null; // Warstwa dla linii frontu
     let selectedUnitId = null;
-    
-    let startTimeMs = 0;
-    let endTimeMs = 0;
-    let currentTimeMs = 0;
-    let isPlaying = false;
-    let playInterval = null;
+    let selectedBattle = null;
+    let namesOn = false;
+    let lastPanelHtml = '';
 
+    let startTimeMs = 0, endTimeMs = 0, currentTimeMs = 0;
+    let playTimer = null;
+
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+    // ---------- Start ----------
     async function init() {
-      const urlParams = new URLSearchParams(window.location.search);
-      const battleId = urlParams.get('battle_id');
-      if (!battleId) { alert("Nie wybrano bitwy!"); window.location.href = "bitwy.html"; return; }
+      const params = new URLSearchParams(window.location.search);
+      // edytor przekazuje id kampanii w parametrze battle_id – obsługujemy też campaign_id
+      const campaignId = params.get('campaign_id') || params.get('battle_id');
+      if (!campaignId) { alert('Nie wybrano kampanii!'); window.location.href = 'bitwy.html'; return; }
 
-      await loadData(battleId);
+      renderEmptyPanel();
+      try {
+        await loadData(campaignId);
+      } catch (err) {
+        console.error(err);
+        document.getElementById('battle-title').innerText = 'Błąd ładowania danych';
+        document.getElementById('time-current').innerText = 'Brak danych';
+        showFatal(err.message);
+        return;
+      }
+      prepareData();
       setupMap();
       setupTimeline();
+      renderLegend();
       updateVisuals();
     }
 
-    async function loadData(battleId) {
-      const { data: bData } = await db.from('battles').select('*').eq('id', battleId).single();
-      battle = bData;
-      document.getElementById('battle-title').innerText = battle.name;
+    // ---------- Pobieranie danych z Supabase ----------
+    // Supabase zwraca max 1000 wierszy na zapytanie, więc pobieramy stronami.
+    async function fetchAll(table, applyFilter) {
+      const PAGE = 1000;
+      let all = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await applyFilter(db.from(table).select('*'))
+          .order('id', { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) throw new Error(`Tabela ${table}: ${error.message}`);
+        all = all.concat(data || []);
+        if (!data || data.length < PAGE) break;
+      }
+      return all;
+    }
 
-      const [sidesRes, unitsRes] = await Promise.all([
-        db.from('sides').select('*').eq('battle_id', battleId),
-        db.from('units').select('*').eq('battle_id', battleId)
+    async function fetchByUnitIds(table, ids) {
+      const CHUNK = 80; // limit długości adresu URL przy filtrze .in()
+      const jobs = [];
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const part = ids.slice(i, i + CHUNK);
+        jobs.push(fetchAll(table, q => q.in('unit_id', part)));
+      }
+      return (await Promise.all(jobs)).flat();
+    }
+
+    async function loadData(campaignId) {
+      if (!db || typeof db.from !== 'function') {
+        throw new Error('Nie udało się utworzyć klienta Supabase. Upewnij się, że supabaseClient.js leży w tym samym folderze co wizualizacja.html (zakładka Network w DevTools nie powinna pokazywać dla niego 404) i że jest w wersji z window.supabaseClient.');
+      }
+
+      const { data: c, error: cErr } = await db.from('campaigns').select('*').eq('id', campaignId).maybeSingle();
+      if (cErr) throw new Error('Tabela campaigns: ' + cErr.message);
+      if (!c) throw new Error('Nie znaleziono kampanii o podanym ID.');
+      campaign = c;
+      document.getElementById('battle-title').innerText = campaign.name;
+      document.title = 'CWEL(f) - ' + campaign.name;
+
+      const [sides, units] = await Promise.all([
+        fetchAll('sides', q => q.eq('campaigns_id', campaignId)),
+        fetchAll('units', q => q.eq('campaigns_id', campaignId))
       ]);
-      dataCache.sides = sidesRes.data || [];
-      dataCache.units = unitsRes.data || [];
+      dataCache.sides = sides;
+      dataCache.units = units;
 
-      const unitIds = dataCache.units.map(u => u.id);
+      const unitIds = units.map(u => u.id);
       if (unitIds.length > 0) {
-        // Zwróć uwagę, że pobieramy też unit_events dla efektów zniszczenia!
-        const [posRes, ordersRes, eventsRes] = await Promise.all([
-          db.from('unit_positions').select('*').in('unit_id', unitIds),
-          db.from('orders').select('*').in('unit_id', unitIds),
-          db.from('unit_events').select('*').in('unit_id', unitIds)
+        const [positions, orders, events] = await Promise.all([
+          fetchByUnitIds('unit_positions', unitIds),
+          fetchByUnitIds('orders', unitIds),
+          fetchByUnitIds('unit_events', unitIds)
         ]);
-        dataCache.positions = posRes.data || [];
-        dataCache.orders = ordersRes.data || [];
-        dataCache.events = eventsRes.data || [];
+        dataCache.positions = positions;
+        dataCache.orders = orders;
+        dataCache.events = events;
       }
     }
 
+    // ---------- Przygotowanie danych do szybkiego odtwarzania ----------
+    function prepareData() {
+      sideById = new Map(dataCache.sides.map(s => [s.id, s]));
+
+      // Pozycje jednostek pogrupowane i posortowane raz
+      positionsByUnit = new Map();
+      dataCache.positions.forEach(p => {
+        const t = new Date(p.recorded_at).getTime();
+        if (!Number.isFinite(t)) return;
+        if (!positionsByUnit.has(p.unit_id)) positionsByUnit.set(p.unit_id, []);
+        positionsByUnit.get(p.unit_id).push({ ...p, t });
+      });
+      positionsByUnit.forEach(arr => arr.sort((a, b) => a.t - b.t));
+
+      // Zniszczenia (najwcześniejsze zdarzenie destroyed/eliminated)
+      destroyedAt = new Map();
+      dataCache.events.forEach(e => {
+        if (e.event_type !== 'destroyed' && e.event_type !== 'eliminated') return;
+        const t = new Date(e.occurred_at).getTime();
+        if (!Number.isFinite(t)) return;
+        if (!destroyedAt.has(e.unit_id) || t < destroyedAt.get(e.unit_id)) destroyedAt.set(e.unit_id, t);
+      });
+
+      // Klatki granic i bitew zapisane przez edytor w campaigns.map_config.borders_timeline
+      let cfg = campaign.map_config;
+      if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch (e) { cfg = null; } }
+      const timeline = (cfg && cfg.borders_timeline) || {};
+      borderFrames = Object.entries(timeline)
+        .map(([ts, f]) => ({ t: Number(ts), features: Array.isArray(f) ? f : (f && f.features) || [] }))
+        .filter(f => Number.isFinite(f.t))
+        .sort((a, b) => a.t - b.t);
+
+      // Edytor zapisuje granice tylko w klatkach, w których się zmieniły. Klatce bez granic
+      // przypisujemy ostatnio znane granice z wcześniejszych klatek (tak samo jak robi to edytor).
+      const isArea = f => f && f.geometry && f.geometry.type !== 'Point';
+      let lastAreas = [], lastSrc = -1;
+      borderFrames.forEach((fr, i) => {
+        const own = fr.features.filter(isArea);
+        if (own.length) { lastAreas = own; lastSrc = i; }
+        fr.areas = lastAreas;
+        fr.areaSrc = lastSrc;
+      });
+
+      const times = new Set(borderFrames.map(f => f.t));
+      positionsByUnit.forEach(arr => arr.forEach(p => times.add(p.t)));
+      allFrameTimes = [...times].sort((a, b) => a - b);
+    }
+
+    // ---------- Mapa ----------
     function setupMap() {
-      map = L.map('map', { zoomControl: false }).setView([52.0, 19.0], 6);
-      
-      // Darmowy OpenStreetMap + CSS filter = Mroczny wojskowy radar
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OSM'
-      }).addTo(map);
-
+      map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([52.0, 19.0], 6);
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OSM' }).addTo(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
-      territoryLayer = L.layerGroup().addTo(map); // Grupa dla poligonów frontu
 
-      if (dataCache.positions.length > 0) {
-        const lats = dataCache.positions.map(p => p.latitude);
-        const lngs = dataCache.positions.map(p => p.longitude);
-        map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]]);
+      areasLayer = L.layerGroup().addTo(map);
+      battlesLayer = L.layerGroup().addTo(map);
+
+      const bounds = L.latLngBounds([]);
+      dataCache.positions.forEach(p => bounds.extend([p.latitude, p.longitude]));
+      borderFrames.forEach(f => f.features.forEach(ft => {
+        if (ft.geometry && ft.geometry.type === 'Point' && ft.properties && ft.properties.iconType === 'battle') {
+          bounds.extend([ft.geometry.coordinates[1], ft.geometry.coordinates[0]]);
+        }
+      }));
+      // Gdy nie ma pozycji ani bitew, dopasowujemy widok do pierwszych granic
+      if (!bounds.isValid()) {
+        const fr = borderFrames.find(f => f.areas && f.areas.length);
+        if (fr) {
+          try {
+            const b = L.geoJSON({ type: 'FeatureCollection', features: fr.areas }).getBounds();
+            if (b.isValid()) bounds.extend(b);
+          } catch (e) { console.warn('Nie udało się obliczyć zasięgu granic', e); }
+        }
       }
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.1));
     }
 
+    function renderLegend() {
+      const el = document.getElementById('legend');
+      if (dataCache.sides.length === 0) return;
+      el.innerHTML = dataCache.sides.map(s =>
+        `<div class="flex items-center gap-2 py-0.5"><span class="inline-block w-3 h-3 rounded-sm" style="background:${esc(s.color)}"></span><span class="text-slate-300">${esc(s.name)}</span></div>`
+      ).join('');
+      el.classList.remove('hidden');
+    }
+
+    // ---------- Oś czasu ----------
     function setupTimeline() {
-      startTimeMs = new Date(battle.start_time).getTime();
-      endTimeMs = new Date(battle.end_time).getTime();
+      const parse = v => (v ? new Date(v).getTime() : NaN);
+      startTimeMs = parse(campaign.start_time);
+      endTimeMs = parse(campaign.end_time);
+      if (!Number.isFinite(startTimeMs)) startTimeMs = allFrameTimes.length ? allFrameTimes[0] : Date.now();
+      if (!Number.isFinite(endTimeMs)) endTimeMs = allFrameTimes.length ? allFrameTimes[allFrameTimes.length - 1] : startTimeMs + 24 * GODZINA;
+      if (endTimeMs <= startTimeMs) endTimeMs = startTimeMs + GODZINA;
       currentTimeMs = startTimeMs;
 
       const slider = document.getElementById('timeline-slider');
       slider.min = startTimeMs;
       slider.max = endTimeMs;
-      slider.step = (endTimeMs - startTimeMs) / 1000;
+      slider.step = 60000; // 1 minuta – płynny ruch jednostek
       slider.value = startTimeMs;
 
       document.getElementById('time-start').innerText = formatDateTime(startTimeMs);
       document.getElementById('time-end').innerText = formatDateTime(endTimeMs);
+      document.getElementById('header-badge').innerText =
+        `${allFrameTimes.length} klatek · ${dataCache.units.length} jednostek`;
 
-      slider.addEventListener('input', (e) => {
-        currentTimeMs = parseInt(e.target.value);
-        updateVisuals();
+      // Znaczniki klatek na osi (jak w edytorze)
+      const ticks = document.getElementById('timeline-ticks');
+      const span = endTimeMs - startTimeMs;
+      ticks.innerHTML = '';
+      allFrameTimes.forEach(t => {
+        const pct = ((t - startTimeMs) / span) * 100;
+        if (pct < 0 || pct > 100) return;
+        const d = document.createElement('div');
+        d.className = 'absolute top-0 w-[3px] h-2 bg-red-500/70 rounded';
+        d.style.left = pct + '%';
+        d.style.marginLeft = '-1px';
+        ticks.appendChild(d);
       });
 
+      slider.addEventListener('input', e => { currentTimeMs = parseInt(e.target.value, 10); updateVisuals(); });
       document.getElementById('btn-play').addEventListener('click', togglePlay);
+      document.getElementById('btn-prev-frame').addEventListener('click', () => jumpToFrame(-1));
+      document.getElementById('btn-next-frame').addEventListener('click', () => jumpToFrame(1));
+      document.getElementById('toggle-names-btn').addEventListener('click', toggleNames);
+    }
+
+    function setTime(ms) {
+      currentTimeMs = Math.min(endTimeMs, Math.max(startTimeMs, ms));
+      document.getElementById('timeline-slider').value = currentTimeMs;
+      updateVisuals();
+    }
+
+    function jumpToFrame(dir) {
+      const EPS = 1000;
+      let target = null;
+      if (dir < 0) {
+        for (let i = allFrameTimes.length - 1; i >= 0; i--) if (allFrameTimes[i] < currentTimeMs - EPS) { target = allFrameTimes[i]; break; }
+        if (target === null) target = startTimeMs;
+      } else {
+        target = allFrameTimes.find(t => t > currentTimeMs + EPS);
+        if (target === undefined) target = endTimeMs;
+      }
+      setTime(target);
+    }
+
+    function stopPlay() {
+      clearInterval(playTimer);
+      playTimer = null;
+      const btn = document.getElementById('btn-play');
+      btn.innerHTML = '<i class="fa-solid fa-play ml-1 text-xl"></i>';
+      btn.classList.remove('border-tactical-accent', 'text-tactical-accent');
     }
 
     function togglePlay() {
+      if (playTimer) { stopPlay(); return; }
+      if (currentTimeMs >= endTimeMs) setTime(startTimeMs);
+
       const btn = document.getElementById('btn-play');
-      isPlaying = !isPlaying;
-      if (isPlaying) {
-        btn.innerHTML = '<i class="fa-solid fa-pause text-xl"></i>';
-        btn.classList.add('border-tactical-accent', 'text-tactical-accent');
-        
-        const step = (endTimeMs - startTimeMs) / 1000; // Szybkość symulacji
-        playInterval = setInterval(() => {
-          currentTimeMs += step;
-          if (currentTimeMs >= endTimeMs) {
-            currentTimeMs = endTimeMs;
-            togglePlay();
-          }
-          document.getElementById('timeline-slider').value = currentTimeMs;
-          updateVisuals();
-        }, 30); // ~30 FPS
-      } else {
-        btn.innerHTML = '<i class="fa-solid fa-play ml-1 text-xl"></i>';
-        btn.classList.remove('border-tactical-accent', 'text-tactical-accent');
-        clearInterval(playInterval);
-      }
+      btn.innerHTML = '<i class="fa-solid fa-pause text-xl"></i>';
+      btn.classList.add('border-tactical-accent', 'text-tactical-accent');
+
+      playTimer = setInterval(() => {
+        const hoursPerSec = Number(document.getElementById('speed-select').value);
+        const step = hoursPerSec * GODZINA * (TICK_MS / 1000);
+        const next = currentTimeMs + step;
+        if (next >= endTimeMs) { setTime(endTimeMs); stopPlay(); return; }
+        setTime(next);
+      }, TICK_MS);
     }
 
-    // Funkcja obliczająca PŁYNNĄ pozycję między dwoma punktami w czasie
-    function getInterpolatedState(unitId, timeMs) {
-      const unitPositions = dataCache.positions.filter(p => p.unit_id === unitId);
-      if (unitPositions.length === 0) return null;
+    // ---------- Pozycja jednostki w czasie ----------
+    // Pierwsza klatka (dowolna: granice albo pozycje jakiejkolwiek jednostki) późniejsza niż t.
+    // Służy do wykrycia, że jednostka skończyła istnienie na mapie.
+    function firstFrameAfter(t) {
+      let lo = 0, hi = allFrameTimes.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (allFrameTimes[mid] > t) hi = mid; else lo = mid + 1; }
+      return lo < allFrameTimes.length ? allFrameTimes[lo] : null;
+    }
 
-      // Sortujemy chronologicznie
-      unitPositions.sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
+    // Płynnie interpoluje pozycję między klatkami edytora.
+    function getUnitState(unitId, timeMs, ignoreRemoval = false) {
+      const arr = positionsByUnit.get(unitId);
+      if (!arr || arr.length === 0) return null;
+      if (timeMs < arr[0].t) return null;
 
-      // Zanim pojawi się pierwsza pozycja
-      if (timeMs < new Date(unitPositions[0].recorded_at).getTime()) return null;
-      // Po ostatniej pozycji
-      if (timeMs >= new Date(unitPositions[unitPositions.length - 1].recorded_at).getTime()) {
-        return unitPositions[unitPositions.length - 1]; // Zwróć ostatnią znaną
-      }
-
-      // Znajdź pozycję A (przed) i B (po)
-      let posA = unitPositions[0];
-      let posB = unitPositions[1];
-      for (let i = 0; i < unitPositions.length - 1; i++) {
-        const tA = new Date(unitPositions[i].recorded_at).getTime();
-        const tB = new Date(unitPositions[i+1].recorded_at).getTime();
-        if (timeMs >= tA && timeMs <= tB) {
-          posA = unitPositions[i];
-          posB = unitPositions[i+1];
-          break;
+      const last = arr[arr.length - 1];
+      if (timeMs >= last.t) {
+        // Po ostatniej pozycji jednostka znika od następnej klatki (jej "do kiedy")
+        if (!ignoreRemoval) {
+          const nf = firstFrameAfter(last.t);
+          if (nf !== null && timeMs >= nf) return null;
         }
+        return last;
       }
 
-      const tA = new Date(posA.recorded_at).getTime();
-      const tB = new Date(posB.recorded_at).getTime();
-      const factor = (timeMs - tA) / (tB - tA); // Procent przebytej drogi (0 do 1)
-
+      let lo = 0, hi = arr.length - 1;
+      while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (arr[mid].t <= timeMs) lo = mid; else hi = mid; }
+      const a = arr[lo], b = arr[hi];
+      if (b.t === a.t) return a;
+      const f = (timeMs - a.t) / (b.t - a.t);
       return {
-        latitude: posA.latitude + (posB.latitude - posA.latitude) * factor,
-        longitude: posA.longitude + (posB.longitude - posA.longitude) * factor,
-        strength: posA.strength,
-        heading: posA.heading
+        latitude: a.latitude + (b.latitude - a.latitude) * f,
+        longitude: a.longitude + (b.longitude - a.longitude) * f,
+        strength: a.strength,
+        heading: a.heading
       };
     }
 
+    // ---------- Granice i bitwy (klatki skokowe, jak w edytorze) ----------
+    function findBorderIdx(t) {
+      let lo = 0, hi = borderFrames.length - 1, res = -1;
+      while (lo <= hi) { const mid = (lo + hi) >> 1; if (borderFrames[mid].t <= t) { res = mid; lo = mid + 1; } else hi = mid - 1; }
+      return res;
+    }
+
+    function sideColor(frakcjaId) {
+      const s = frakcjaId ? sideById.get(frakcjaId) : null;
+      return s ? s.color : null;
+    }
+
+    function tooltipOpts() {
+      return { permanent: namesOn, sticky: !namesOn, direction: 'center', className: TOOLTIP_CLASS };
+    }
+
+    // Styl obszaru – taki sam jak w edytorze (kolor strony konfliktu albo neutralny szary)
+    function areaStyle(props) {
+      const col = sideColor(props.frakcja) || props.color;
+      if (!col) return { color: '#64748b', fillColor: '#334155', fillOpacity: 0.2, weight: 2 };
+      return { color: col, fillColor: col, fillOpacity: 0.35, weight: 2 };
+    }
+
+    // Rysuje granice państw / obszary zapisane w klatce
+    function drawAreas(features) {
+      areasLayer.clearLayers();
+      if (!features || !features.length) return;
+      try {
+        L.geoJSON({ type: 'FeatureCollection', features }, {
+          style: f => areaStyle(f.properties || {}),
+          onEachFeature: (f, layer) => {
+            const p = f.properties || {};
+            const name = p.name || p.NAME || p.SUBJECTO;
+            if (name) layer.bindTooltip(name, tooltipOpts());
+          }
+        }).addTo(areasLayer);
+      } catch (e) {
+        console.error('Błąd rysowania granic:', e);
+      }
+    }
+
+    // Z klatek zapisanych w edytorze rysujemy granice (wielokąty) oraz znaczniki bitew
+    function renderBorders(idx) {
+      if (idx === currentBorderIdx) return;
+      currentBorderIdx = idx;
+      battlesLayer.clearLayers();
+
+      // Granice przerysowujemy tylko wtedy, gdy zmieniła się klatka, z której pochodzą
+      const src = idx >= 0 ? borderFrames[idx].areaSrc : -1;
+      if (src !== currentAreaSrc) {
+        currentAreaSrc = src;
+        drawAreas(idx >= 0 ? borderFrames[idx].areas : []);
+      }
+      if (idx < 0) return;
+
+      borderFrames[idx].features.forEach(feature => {
+        const props = feature.properties || {};
+        if (!(feature.geometry && feature.geometry.type === 'Point' && props.iconType === 'battle')) return;
+
+        const name = props.name || props.NAME || props.SUBJECTO;
+        const color = sideColor(props.frakcja) || '#ef4444';
+        const [lng, lat] = feature.geometry.coordinates;
+        const icon = L.divIcon({
+          className: '', iconSize: [50, 50], iconAnchor: [25, 25],
+          html: `<div class="battle-badge" style="border-color:${esc(color)};box-shadow:0 0 20px ${esc(color)}, inset 0 0 10px rgba(0,0,0,0.5)"><i class="${ICONS.battle}"></i></div>`
+        });
+        const m = L.marker([lat, lng], { icon, zIndexOffset: 500 }).addTo(battlesLayer);
+        if (name) m.bindTooltip(name, tooltipOpts());
+        m.on('click', () => selectBattle(props, [lat, lng]));
+      });
+    }
+
+    function toggleNames() {
+      namesOn = !namesOn;
+      const btn = document.getElementById('toggle-names-btn');
+      btn.classList.toggle('bg-tactical-accent', namesOn);
+      btn.classList.toggle('border-tactical-accent', namesOn);
+
+      const rebind = (layer, name) => { layer.unbindTooltip(); layer.bindTooltip(name, tooltipOpts()); };
+      dataCache.units.forEach(u => { if (markers[u.id]) rebind(markers[u.id], u.name); });
+      currentBorderIdx = -2;      // wymusza ponowne narysowanie granic i bitew z nowymi podpisami
+      currentAreaSrc = -2;
+      updateVisuals();
+    }
+
+    // ---------- Jednostki ----------
+    function unitIconType(unit) {
+      return unit.symbol && unit.symbol !== 'none' ? unit.symbol : unit.unit_type;
+    }
+
+    function unitIconHtml(unit, color, isDestroyed, isExploding, isSelected) {
+      const cls = ['unit-badge'];
+      if (isDestroyed) cls.push('destroyed');
+      if (isExploding) cls.push('exploding');
+      if (isSelected && !isDestroyed) cls.push('selected');
+      const iconClass = ICONS[unitIconType(unit)] || 'fa-solid fa-location-dot';
+      return `<div class="${cls.join(' ')}" style="border-color:${esc(color)}"><i class="${iconClass}"></i></div>`;
+    }
+
+    // ---------- Główne odświeżanie widoku ----------
     function updateVisuals() {
       document.getElementById('time-current').innerText = formatDateTime(currentTimeMs);
-      territoryLayer.clearLayers(); // Czyścimy poprzednie linie frontu
+      const onFrame = allFrameTimes.includes(currentTimeMs);
+      document.getElementById('frame-flag').classList.toggle('hidden', !onFrame);
 
-      const activePositionsBySide = {}; // Do zbierania punktów do linii frontu
+      renderBorders(findBorderIdx(currentTimeMs));
 
       dataCache.units.forEach(unit => {
-        // Sprawdź czy jednostka została zniszczona
-        const destructionEvent = dataCache.events.find(e => 
-          e.unit_id === unit.id && 
-          (e.event_type === 'destroyed' || e.event_type === 'eliminated') &&
-          new Date(e.occurred_at).getTime() <= currentTimeMs
-        );
+        const side = sideById.get(unit.side_id);
+        const color = side ? side.color : '#ffffff';
+        const destroyedT = destroyedAt.get(unit.id);
+        const isDestroyed = destroyedT !== undefined && destroyedT <= currentTimeMs;
+        const isExploding = isDestroyed && currentTimeMs <= destroyedT + EXPLOSION_MS;
 
-        let currentState;
-        let isDestroyed = !!destructionEvent;
-        let isExploding = false;
+        // Zniszczona jednostka zostaje w miejscu zniszczenia
+        const state = isDestroyed ? getUnitState(unit.id, destroyedT, true) : getUnitState(unit.id, currentTimeMs);
 
-        if (isDestroyed) {
-          const eventTime = new Date(destructionEvent.occurred_at).getTime();
-          // Zamrożenie jednostki w miejscu jej zniszczenia
-          currentState = getInterpolatedState(unit.id, eventTime);
-          
-          // Efekt eksplozji jeśli zniszczenie nastąpiło max 6 "wirtualnych" godzin temu
-          const explosionDurationMs = 6 * 60 * 60 * 1000; 
-          if (currentTimeMs >= eventTime && currentTimeMs <= eventTime + explosionDurationMs) {
-            isExploding = true;
-          }
-        } else {
-          // Płynne obliczanie pozycji
-          currentState = getInterpolatedState(unit.id, currentTimeMs);
-        }
-
-        if (currentState) {
-          const side = dataCache.sides.find(s => s.id === unit.side_id);
-          
-          // Zbieramy punkty do terytorium/frontu (tylko żywe jednostki poszerzają front!)
-          if (!isDestroyed && side) {
-            if (!activePositionsBySide[side.id]) activePositionsBySide[side.id] = [];
-            activePositionsBySide[side.id].push([currentState.longitude, currentState.latitude]); // Turf wymaga [lng, lat]
-          }
-
-          // Renderowanie Markera
-          const color = side ? side.color : '#ffffff';
-          let classes = 'tactical-marker w-4 h-4';
-          if (isDestroyed) classes += ' tactical-marker-destroyed';
-          if (isExploding) classes += ' explosion-effect';
-          if (selectedUnitId === unit.id && !isDestroyed) classes += ' tactical-marker-selected';
-
-          const iconHtml = `<div class="${classes}" style="${!isDestroyed ? `background-color: ${color};` : ''}"></div>`;
-
-          if (!markers[unit.id]) {
-            const icon = L.divIcon({ className: '', html: iconHtml, iconSize: [16, 16], iconAnchor: [8, 8] });
-            markers[unit.id] = L.marker([currentState.latitude, currentState.longitude], { icon: icon }).addTo(map);
-            markers[unit.id].on('click', () => selectUnit(unit.id));
-          } else {
-            markers[unit.id].setLatLng([currentState.latitude, currentState.longitude]);
-            markers[unit.id].setIcon(L.divIcon({ className: '', html: iconHtml, iconSize: [16, 16], iconAnchor: [8, 8] }));
-          }
-        } else {
+        if (!state) {
           if (markers[unit.id]) { map.removeLayer(markers[unit.id]); delete markers[unit.id]; }
+          return;
         }
-      });
 
-      // GENEROWANIE LINII FRONTU (Terytoria) przy pomocy Turf.js
-      Object.entries(activePositionsBySide).forEach(([sideId, points]) => {
-        if (points.length >= 3) { // Convex Hull potrzebuje min. 3 punktów, by stworzyć obszar
-          const side = dataCache.sides.find(s => s.id === sideId);
-          // Tworzymy otoczkę wypukłą obejmującą wszystkie jednostki strony
-          const hull = turf.convex(turf.featureCollection(points.map(p => turf.point(p))));
-          
-          if (hull) {
-            L.geoJSON(hull, {
-              style: { 
-                color: side.color, 
-                fillColor: side.color, 
-                fillOpacity: 0.15, 
-                weight: 2, 
-                dashArray: '5, 10' // Przerywana militarna linia terytorium
-              }
-            }).addTo(territoryLayer);
+        const isSelected = selectedUnitId === unit.id;
+        const key = `${color}|${isDestroyed}|${isExploding}|${isSelected}`;
+        const latlng = [state.latitude, state.longitude];
+
+        if (!markers[unit.id]) {
+          const m = L.marker(latlng, {
+            icon: L.divIcon({ className: '', html: unitIconHtml(unit, color, isDestroyed, isExploding, isSelected), iconSize: [32, 32], iconAnchor: [16, 16] })
+          }).addTo(map);
+          m._key = key;
+          m.bindTooltip(unit.name, { ...tooltipOpts(), direction: 'top', offset: [0, -18] });
+          m.on('click', () => selectUnit(unit.id));
+          markers[unit.id] = m;
+        } else {
+          const m = markers[unit.id];
+          m.setLatLng(latlng);
+          if (m._key !== key) {
+            m._key = key;
+            m.setIcon(L.divIcon({ className: '', html: unitIconHtml(unit, color, isDestroyed, isExploding, isSelected), iconSize: [32, 32], iconAnchor: [16, 16] }));
+            m.setZIndexOffset(isExploding ? 1000 : 0);
           }
         }
       });
@@ -373,100 +635,160 @@
       if (selectedUnitId) updateSidePanel();
     }
 
+    // ---------- Panel boczny ----------
+    function openPanel() { document.getElementById('side-panel').classList.remove('-translate-x-full'); }
+    function hidePanelOnMobile() { document.getElementById('side-panel').classList.add('-translate-x-full'); }
+
+    function setPanel(html) {
+      if (html === lastPanelHtml) return; // nie przebudowujemy panelu, gdy nic się nie zmieniło
+      lastPanelHtml = html;
+      document.getElementById('panel-content').innerHTML = html;
+    }
+
+    function emptyPanelHtml() {
+      return `
+        <div class="text-center text-slate-500 mt-10">
+          <i class="fa-solid fa-crosshairs text-4xl mb-4 text-tactical-700"></i>
+          <p>Kliknij jednostkę lub bitwę na mapie, aby odczytać jej dane i rozkazy.</p>
+        </div>`;
+    }
+    function renderEmptyPanel() { setPanel(emptyPanelHtml()); }
+
+    function showFatal(msg) {
+      setPanel(`
+        <div class="text-center mt-10">
+          <i class="fa-solid fa-triangle-exclamation text-4xl mb-4 text-red-500"></i>
+          <p class="text-red-400 font-bold mb-2">Nie udało się wczytać kampanii</p>
+          <p class="text-slate-400 text-sm">${esc(msg)}</p>
+        </div>`);
+      openPanel();
+    }
+
     function selectUnit(id) {
+      selectedBattle = null;
       selectedUnitId = id;
-      updateVisuals(); // Przerysuje markery by dodać obwódkę
+      openPanel();
+      updateVisuals();
+    }
+
+    function selectBattle(props, latlng) {
+      selectedUnitId = null;
+      if (targetLine) { map.removeLayer(targetLine); targetLine = null; }
+      selectedBattle = props;
+      openPanel();
+      updateVisuals(); // zdejmuje podświetlenie jednostki
+
+      const side = props.frakcja ? sideById.get(props.frakcja) : null;
+      setPanel(`
+        <div class="flex justify-between items-start mb-4 border-b border-tactical-700 pb-3">
+          <span class="text-[10px] uppercase font-bold px-2 py-1 rounded text-white bg-red-700">Bitwa</span>
+          <button onclick="closePanel()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-times"></i></button>
+        </div>
+        <h2 class="text-2xl font-bold text-white mb-1">${esc(props.name || 'Bitwa bez nazwy')}</h2>
+        ${side ? `<p class="text-sm text-slate-400 mb-4">Inicjator: <span style="color:${esc(side.color)}">${esc(side.name)}</span></p>` : '<div class="mb-4"></div>'}
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Opis</h3>
+        <p class="text-slate-300 text-sm leading-relaxed mb-5">${esc(props.description) || '<span class="italic text-slate-500">Brak opisu.</span>'}</p>
+        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Wynik</h3>
+        <p class="text-slate-300 text-sm leading-relaxed">${esc(props.result) || '<span class="italic text-slate-500">Brak wyniku.</span>'}</p>
+      `);
+    }
+
+    // Rozkazy obowiązujące w danym momencie (rozkaz bez valid_until trwa do wydania następnego)
+    function getActiveOrders(unitId, t) {
+      const list = dataCache.orders
+        .filter(o => o.unit_id === unitId)
+        .map(o => ({
+          o,
+          from: new Date(o.valid_from || o.issued_at).getTime(),
+          until: o.valid_until ? new Date(o.valid_until).getTime() : Infinity
+        }))
+        .filter(x => t >= x.from && t <= x.until)
+        .sort((a, b) => a.from - b.from);
+      const lastOpen = [...list].reverse().find(x => x.until === Infinity);
+      return list.filter(x => x.until !== Infinity || x === lastOpen).map(x => x.o);
     }
 
     function updateSidePanel() {
-      const panel = document.getElementById('panel-content');
       const unit = dataCache.units.find(u => u.id === selectedUnitId);
-      const side = dataCache.sides.find(s => s.id === unit.side_id);
-      
-      const destructionEvent = dataCache.events.find(e => 
-          e.unit_id === unit.id && 
-          (e.event_type === 'destroyed' || e.event_type === 'eliminated') &&
-          new Date(e.occurred_at).getTime() <= currentTimeMs
-      );
+      if (!unit) return;
+      const side = sideById.get(unit.side_id);
+      const sideCol = side ? side.color : '#6b7280';
 
-      // Skąd wziąć dane – z obecnego czasu czy z momentu zniszczenia?
-      const checkTime = destructionEvent ? new Date(destructionEvent.occurred_at).getTime() : currentTimeMs;
-      const currentPos = getInterpolatedState(selectedUnitId, checkTime);
+      const destroyedT = destroyedAt.get(unit.id);
+      const isDestroyed = destroyedT !== undefined && destroyedT <= currentTimeMs;
+      const checkTime = isDestroyed ? destroyedT : currentTimeMs;
+      const pos = getUnitState(selectedUnitId, checkTime, isDestroyed);
 
-      const activeOrder = dataCache.orders.find(o => {
-        const validFrom = new Date(o.valid_from).getTime();
-        const validUntil = o.valid_until ? new Date(o.valid_until).getTime() : Infinity;
-        return o.unit_id === selectedUnitId && currentTimeMs >= validFrom && currentTimeMs <= validUntil;
-      });
+      const activeOrders = isDestroyed ? [] : getActiveOrders(selectedUnitId, currentTimeMs);
+      const withTarget = [...activeOrders].reverse().find(o => o.target_latitude != null && o.target_longitude != null);
 
-      if (targetLine) map.removeLayer(targetLine);
-      if (activeOrder && activeOrder.target_latitude && currentPos && !destructionEvent) {
-        targetLine = L.polyline(
-          [[currentPos.latitude, currentPos.longitude], [activeOrder.target_latitude, activeOrder.target_longitude]], 
-          { color: side.color, weight: 2, dashArray: '5, 10', opacity: 0.8 }
-        ).addTo(map);
-      }
+      // Linia do celu rozkazu – aktualizowana w miejscu, bez kasowania co klatkę
+      if (withTarget && pos) {
+        const pts = [[pos.latitude, pos.longitude], [withTarget.target_latitude, withTarget.target_longitude]];
+        if (targetLine) { targetLine.setLatLngs(pts); targetLine.setStyle({ color: sideCol }); }
+        else targetLine = L.polyline(pts, { color: sideCol, weight: 2, dashArray: '5, 10', opacity: 0.8, interactive: false }).addTo(map);
+      } else if (targetLine) { map.removeLayer(targetLine); targetLine = null; }
 
-      panel.innerHTML = `
+      const ordersHtml = activeOrders.length ? activeOrders.map(o => `
+          <div class="bg-tactical-900 border border-l-4 border-tactical-700 rounded p-4 shadow-md mb-2" style="border-left-color:${esc(sideCol)}">
+            <div class="flex justify-between text-xs text-slate-400 mb-2">
+              <span class="uppercase font-bold text-white">${esc(ORDER_LABELS[o.order_type] || o.order_type)}</span>
+              <span>${esc(formatDateTime(new Date(o.valid_from || o.issued_at).getTime()))}</span>
+            </div>
+            <p class="text-slate-300 text-sm leading-relaxed">${esc(o.description)}</p>
+          </div>`).join('') : `
+          <div class="text-slate-500 text-sm italic border border-dashed border-tactical-700 p-4 rounded text-center">
+            Brak aktywnych rozkazów.
+          </div>`;
+
+      setPanel(`
         <div class="flex justify-between items-start mb-4 border-b border-tactical-700 pb-3">
-          <span class="text-[10px] uppercase font-bold px-2 py-1 rounded text-white" style="background-color: ${side ? side.color : 'gray'}">
-            ${side ? side.name : 'Nieznana'}
+          <span class="text-[10px] uppercase font-bold px-2 py-1 rounded text-white" style="background-color:${esc(sideCol)}">
+            ${side ? esc(side.name) : 'Nieznana'}
           </span>
           <button onclick="closePanel()" class="text-slate-500 hover:text-white"><i class="fa-solid fa-times"></i></button>
         </div>
-        
-        <h2 class="text-2xl font-bold text-white mb-1 ${destructionEvent ? 'line-through text-slate-500' : ''}">${unit.name}</h2>
-        <p class="text-sm text-slate-400 mb-6">Typ: ${unit.unit_type || 'Nieokreślony'} <span class="uppercase border border-slate-600 px-1 ml-2 text-[10px]">${unit.symbol || ''}</span></p>
-        
-        ${destructionEvent ? `
+
+        <h2 class="text-2xl font-bold text-white mb-1 ${isDestroyed ? 'line-through text-slate-500' : ''}">${esc(unit.name)}</h2>
+        <p class="text-sm text-slate-400 mb-6">Typ: ${esc(unit.unit_type || 'Nieokreślony')} <span class="uppercase border border-slate-600 px-1 ml-2 text-[10px]">${esc(unit.symbol && unit.symbol !== 'none' ? unit.symbol : '')}</span></p>
+
+        ${isDestroyed ? `
           <div class="bg-red-900/20 border border-red-500/50 p-4 rounded mb-6 text-center">
             <i class="fa-solid fa-skull-crossbones text-2xl text-red-500 mb-2"></i>
             <p class="text-red-400 font-bold text-sm uppercase">Jednostka zniszczona</p>
-            <p class="text-xs text-slate-400 mt-1">Stracona: ${formatDateTime(new Date(destructionEvent.occurred_at).getTime())}</p>
+            <p class="text-xs text-slate-400 mt-1">Stracona: ${esc(formatDateTime(destroyedT))}</p>
           </div>
         ` : `
           <div class="grid grid-cols-2 gap-3 mt-4 text-sm mb-6">
             <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
               <span class="block text-slate-500 text-xs mb-1">Stan (Siła)</span>
-              <span class="font-bold text-white text-lg">${currentPos ? (currentPos.strength || 'Brak') : '-'}</span>
+              <span class="font-bold text-white text-lg">${pos && pos.strength ? esc(pos.strength) : 'Brak'}</span>
             </div>
             <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
               <span class="block text-slate-500 text-xs mb-1">Kierunek</span>
-              <span class="font-bold text-white text-lg">${currentPos && currentPos.heading ? currentPos.heading + '&deg;' : '-'}</span>
+              <span class="font-bold text-white text-lg">${pos && pos.heading ? esc(Math.round(pos.heading)) + '&deg;' : '-'}</span>
             </div>
           </div>
         `}
 
         <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Aktywne rozkazy</h3>
-        ${activeOrder && !destructionEvent ? `
-          <div class="bg-tactical-900 border border-l-4 border-tactical-700 rounded p-4 shadow-md" style="border-left-color: ${side.color}">
-            <div class="flex justify-between text-xs text-slate-400 mb-2">
-              <span class="uppercase font-bold text-white">${activeOrder.order_type}</span>
-            </div>
-            <p class="text-slate-300 text-sm leading-relaxed">${activeOrder.description}</p>
-          </div>
-        ` : `
-          <div class="text-slate-500 text-sm italic border border-dashed border-tactical-700 p-4 rounded text-center">
-            Brak aktywnych rozkazów.
-          </div>
-        `}
-      `;
+        ${ordersHtml}
+      `);
     }
 
     function closePanel() {
       selectedUnitId = null;
-      if (targetLine) map.removeLayer(targetLine);
+      selectedBattle = null;
+      if (targetLine) { map.removeLayer(targetLine); targetLine = null; }
+      renderEmptyPanel();
+      hidePanelOnMobile();
       updateVisuals();
-      document.getElementById('panel-content').innerHTML = `
-        <div class="text-center text-slate-500 mt-10">
-          <i class="fa-solid fa-crosshairs text-4xl mb-4 text-tactical-700"></i>
-          <p>Kliknij jednostkę na mapie, aby odczytać jej dane i rozkazy.</p>
-        </div>`;
     }
 
+    // ---------- Pomocnicze ----------
+    // Czas wyświetlany w UTC – tak jak w edytorze, żeby godziny się zgadzały
     function formatDateTime(ms) {
-      const d = new Date(ms);
-      return d.toLocaleDateString('pl-PL') + ' ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+      return new Date(ms).toLocaleString('pl-PL', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
     window.addEventListener('DOMContentLoaded', init);

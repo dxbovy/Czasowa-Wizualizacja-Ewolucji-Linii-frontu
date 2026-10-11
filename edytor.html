@@ -73,11 +73,16 @@
             <button id="dodaj-frakcje-btn" class="flex-1 text-xs bg-tactical-800 hover:bg-tactical-700 border border-tactical-600 rounded py-1.5">
               <i class="fa-solid fa-plus"></i> Nowa
             </button>
+            <button id="usun-frakcje-btn" title="Usuń aktywną frakcję" class="text-xs bg-tactical-800 hover:bg-red-900/50 hover:border-red-700 hover:text-red-300 border border-tactical-600 rounded px-2.5 py-1.5 transition-colors">
+              <i class="fa-solid fa-trash"></i>
+            </button>
           </div>
           
           <button id="maluj-btn" class="w-full text-xs bg-tactical-800 border border-tactical-600 hover:bg-tactical-700 rounded py-2 transition-colors">
             <i class="fa-solid fa-fill-drip"></i> Tryb Malowania: Wył.
           </button>
+          <p class="text-[10px] text-slate-500 mt-2 leading-snug"><i class="fa-solid fa-object-group mr-1"></i>Aneksja: <b>Shift + klik</b> na dwa obszary łączy je w jedno (Esc anuluje).</p>
+          <p class="text-[10px] text-slate-500 mt-1 leading-snug"><i class="fa-solid fa-user-slash mr-1"></i>Usunięcie z frakcji: wybierz <b>— Bez frakcji —</b>, włącz Tryb Malowania i kliknij obiekt.</p>
         </div>
 
         <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 mt-6">Narzędzia Zapasowe</h3>
@@ -261,6 +266,38 @@
         [idNeutral]: { nazwa: 'Neutralne', kolor: '#adb5bd' },
     };
     let aktywnaFrakcja = idPL;
+    // Frakcje usunięte w edytorze, które istnieją w bazie: id -> id frakcji zastępczej.
+    // Przy zapisie do bazy ich jednostki są przepinane na zastępczą, a wiersz w tabeli sides jest kasowany.
+    let usunieteFrakcje = {};
+    // Specjalna "frakcja" w liście wyboru: malowanie nią zdejmuje obiekt z jakiejkolwiek frakcji
+    const BRAK_FRAKCJI = '__brak__';
+    const czyUUID = (u) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u);
+
+    // Dołącza frakcje z zewnętrznego źródła (import pliku, autozapis).
+    // Dopasowanie po id lub nazwie. Gdy podano klatki źródła, dodawane są tylko frakcje, których
+    // te klatki faktycznie używają – dzięki temu nie pojawiają się "luźne", nieużywane frakcje.
+    function dolaczFrakcje(zrodlo, klatkiZrodla) {
+      const uzyte = new Set();
+      for (const stan of Object.values(klatkiZrodla || {})) {
+        for (const f of ((stan && stan.features) || [])) { const fr = f.properties && f.properties.frakcja; if (fr) uzyte.add(fr); }
+      }
+      const mapaId = {}, dodane = [];
+      for (const [id, f] of Object.entries(zrodlo || {})) {
+        if (!f || !f.nazwa) continue;
+        const ist = Object.entries(frakcje).find(([eid, ef]) => eid === id || (ef.nazwa || '').toLowerCase() === f.nazwa.toLowerCase());
+        if (ist) mapaId[id] = ist[0];
+        else if (!klatkiZrodla || uzyte.has(id)) { frakcje[id] = { nazwa: f.nazwa, kolor: f.kolor || '#888888' }; mapaId[id] = id; dodane.push(f.nazwa); }
+      }
+      return { mapaId, dodane };
+    }
+    function przemapujFrakcje(klatkiObj, mapaId) {
+      for (const stan of Object.values(klatkiObj || {})) {
+        for (const f of ((stan && stan.features) || [])) {
+          const fr = f.properties && f.properties.frakcja;
+          if (fr && mapaId[fr]) f.properties.frakcja = mapaId[fr];
+        }
+      }
+    }
 
     // Funkcja do formatowania daty w Timezone przeglądarki na potrzeby okienka dat
     function formatDateTimeLocal(ms) {
@@ -344,11 +381,15 @@
       }
 
       if (Object.keys(bazoweKlatki).length > 0) {
-          klatki = bazoweKlatki;
+          klatki = uzupelnijKlatki(bazoweKlatki);
       } else {
           try {
               const zapis = JSON.parse(localStorage.getItem('kampania-autozapis-'+BATTLE_ID));
-              if (zapis?.klatki) { klatki = zapis.klatki; Object.assign(frakcje, zapis.frakcje || {}); }
+              if (zapis?.klatki) {
+                  const { mapaId } = dolaczFrakcje(zapis.frakcje, zapis.klatki);
+                  przemapujFrakcje(zapis.klatki, mapaId);
+                  klatki = zapis.klatki;
+              }
               if (zapis?.rozkazy) { lokalneRozkazy = zapis.rozkazy; }
           } catch(err) {}
       }
@@ -394,6 +435,7 @@
 
     function odtworzStan(geoJsonData) {
       map.pm.disableDraw();
+      wybraneDoAneksji = [];   // warstwy za chwilę zostaną usunięte – zaznaczenie aneksji jest nieaktualne
       
       // Czyszczenie strzałek rozkazów
       if (window.orderArrows) {
@@ -575,6 +617,52 @@
         zamknijOpcjeJednostki();
     }
 
+    // ---- MALOWANIE: zmiana frakcji obowiązuje także w kolejnych klatkach ----
+    // Klatki są pełnymi kopiami stanu, więc samo przemalowanie zmieniałoby tylko bieżącą klatkę
+    // i po przejściu dalej kolor wracałby do starego. Dlatego zmianę przenosimy na późniejsze klatki,
+    // dopóki obiekt ma w nich jeszcze "starą" frakcję i tę samą geometrię (potem ktoś zmienił go świadomie).
+    function liczWspolrzedne(c) { return typeof c[0] === 'number' ? 1 : c.reduce((n, x) => n + liczWspolrzedne(x), 0); }
+    function ramkaWspolrzednych(c, b = [Infinity, Infinity, -Infinity, -Infinity]) {
+      if (typeof c[0] === 'number') { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); }
+      else c.forEach(x => ramkaWspolrzednych(x, b));
+      return b;
+    }
+    function opisObiektu(f) {
+      const g = f && f.geometry; if (!g) return null;
+      const p = f.properties || {};
+      if (g.type === 'Point') return (p.name && p.iconType !== 'battle') ? { typ: 'Point', nazwa: p.name } : null;
+      if (g.type === 'Polygon' || g.type === 'MultiPolygon') {
+        return { typ: g.type, nazwa: p.name || p.NAME || p.SUBJECTO || '', n: liczWspolrzedne(g.coordinates), ramka: ramkaWspolrzednych(g.coordinates) };
+      }
+      return null;
+    }
+    function tenSamObiekt(a, b) {
+      if (!a || !b || a.typ !== b.typ) return false;
+      if (a.typ === 'Point') return a.nazwa === b.nazwa;
+      // geometria bywa zaokrąglona inaczej w różnych klatkach – porównujemy liczbę punktów i obrys z tolerancją
+      return a.nazwa === b.nazwa && a.n === b.n && a.ramka.every((v, i) => Math.abs(v - b.ramka[i]) < 1e-4);
+    }
+    function propagujMalowanie(przed, stara, nowa) {
+      const opis = opisObiektu(przed); if (!opis) return;
+      const czasy = Object.keys(klatki).map(Number).filter(t => t > czasTeraz).sort((a, b) => a - b);
+      let zmieniono = false;
+      for (const t of czasy) {
+        const feats = (klatki[t] && klatki[t].features) || [];
+        const trafienie = feats.find(f => tenSamObiekt(opis, opisObiektu(f)));
+        if (!trafienie) {
+          // wielokąt: klatka ma inne granice (ten obszar zmieniono) – przerywamy; jednostka: po prostu jej tu nie ma
+          if (opis.typ !== 'Point' && feats.some(f => f.geometry && f.geometry.type !== 'Point')) break;
+          continue;
+        }
+        if ((trafienie.properties && trafienie.properties.frakcja || null) !== (stara || null)) break;   // ktoś zmienił to świadomie
+        const nowe = { ...(trafienie.properties || {}) };
+        if (nowa) nowe.frakcja = nowa; else delete nowe.frakcja;       // brak frakcji = usunięcie właściwości
+        trafienie.properties = nowe;
+        zmieniono = true;
+      }
+      if (zmieniono) autozapis();
+    }
+
     function dodajEdycjeIKlikanie(layer) {
       layer.on('pm:dragend pm:edit', () => zapiszStan());
 
@@ -583,15 +671,17 @@
           L.DomEvent.stopPropagation(e);
           
           if (trybMalowania) {
+              const stara = layer.feature?.properties?.frakcja || undefined;
+              const nowa = aktywnaFrakcja === BRAK_FRAKCJI ? undefined : aktywnaFrakcja;
+              if (stara === nowa) return;                     // już ma tę frakcję (albo już jej nie ma)
+              const przed = layer.toGeoJSON();                // geometria do rozpoznania obiektu w innych klatkach
               zastosujFrakcje(layer, aktywnaFrakcja);
-              zapiszStan(); return;
+              zapiszStan();
+              propagujMalowanie(przed, stara, nowa);
+              return;
           }
           if (e.originalEvent.shiftKey) {
-              layer.setStyle({ color: '#ff0000', fillColor: '#ff0000' });
-              wybraneDoAneksji.push(layer);
-              if (wybraneDoAneksji.length === 2) {
-                  wykonajAneksje(wybraneDoAneksji[0], wybraneDoAneksji[1]); wybraneDoAneksji = [];
-              }
+              obsluzKlikAneksji(layer);
           } else { layer.pm.toggleEdit(); }
       });
 
@@ -632,30 +722,99 @@
       });
     }
 
+    // ---- ANEKSJA: Shift + klik na dwa obszary łączy je w jedno terytorium ----
+    const DOMYSLNY_STYL_OBSZARU = { color: '#64748b', fillColor: '#334155', fillOpacity: 0.2, weight: 2 };
+    const STYL_ZAZNACZENIA_ANEKSJI = { color: '#ff0000', fillColor: '#ff0000', fillOpacity: 0.45, weight: 3 };
+    const KLASA_TOOLTIPA = "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none";
+
+    let _komunikatTimer = null;
+    function pokazKomunikat(tekst, blad = false) {
+      let el = document.getElementById('komunikat-edytora');
+      if (!el) {
+        el = document.createElement('div'); el.id = 'komunikat-edytora';
+        el.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.85);padding:8px 18px;border-radius:8px;z-index:99999;font-weight:bold;font-size:13px;pointer-events:none;max-width:90vw;';
+        document.body.appendChild(el);
+      }
+      const kolor = blad ? '#f87171' : '#10b981';
+      el.style.color = kolor; el.style.border = '1px solid ' + kolor;
+      el.textContent = tekst; el.style.display = 'block';
+      clearTimeout(_komunikatTimer); _komunikatTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
+
+    function przywrocStylObszaru(layer) {
+      const id = layer.feature?.properties?.frakcja;
+      if (id && frakcje[id]) zastosujFrakcje(layer, id); else layer.setStyle(DOMYSLNY_STYL_OBSZARU);
+    }
+
+    function wyczyscZaznaczenieAneksji() {
+      wybraneDoAneksji.forEach(l => { if (map.hasLayer(l)) przywrocStylObszaru(l); });
+      wybraneDoAneksji = [];
+    }
+
+    function obsluzKlikAneksji(layer) {
+      // Aneksja dotyczy wyłącznie obszarów (wielokątów) – nie znaczników, strzałek ani linii
+      if (!(layer instanceof L.Polygon)) { pokazKomunikat('Aneksja działa tylko na obszarach (wielokątach).', true); return; }
+      wybraneDoAneksji = wybraneDoAneksji.filter(l => map.hasLayer(l));   // pomijamy warstwy usunięte w międzyczasie
+
+      const i = wybraneDoAneksji.indexOf(layer);
+      if (i !== -1) {                               // ponowny klik w ten sam obszar = odznaczenie
+        wybraneDoAneksji.splice(i, 1); przywrocStylObszaru(layer);
+        pokazKomunikat('Odznaczono obszar.'); return;
+      }
+      layer.setStyle(STYL_ZAZNACZENIA_ANEKSJI);
+      wybraneDoAneksji.push(layer);
+      if (wybraneDoAneksji.length < 2) { pokazKomunikat('Zaznaczono 1/2 – kliknij z Shiftem drugi obszar (Esc = anuluj).'); return; }
+
+      const [a, b] = wybraneDoAneksji;
+      wybraneDoAneksji = [];
+      wykonajAneksje(a, b);
+    }
+
+    // Łączy dwa wielokąty (Turf 6: union(a, b)). Przy błędzie topologii próbuje jeszcze raz po "naprawieniu" geometrii.
+    function polaczObszary(fa, fb) {
+      const proby = [
+        () => turf.union(fa, fb),
+        () => turf.union(turf.buffer(fa, 0), turf.buffer(fb, 0))
+      ];
+      let pierwszyBlad = null;
+      for (const proba of proby) {
+        try { const u = proba(); if (u && u.geometry) return u; }
+        catch (err) { if (!pierwszyBlad) pierwszyBlad = err; }
+      }
+      throw pierwszyBlad || new Error('wynik połączenia jest pusty');
+    }
+
     function wykonajAneksje(w1, w2) {
       try {
-          const u = turf.union(turf.featureCollection([w1.toGeoJSON(), w2.toGeoJSON()]));
-          if (u) {
-              const fid = w1.feature?.properties?.frakcja;
-              w1.remove(); w2.remove();
-              const nl = L.geoJSON(u).addTo(map);
-              
-              nl.getLayers().forEach(nk => {
-                  nk.options.pmIgnore = false;
-                  L.PM.reInitLayer(nk);
-                  dodajEdycjeIKlikanie(nk);
-                  const nazwa = prompt("Aneksja zakończona! Podaj nazwę nowego terytorium:");
-                  nk.feature = nk.feature || { type: "Feature", properties: {} };
-                  if (fid) zastosujFrakcje(nk, fid);
-                  if (nazwa) {
-                      nk.feature.properties.name = nazwa;
-                      nk.bindTooltip(nazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
-                  }
-              });
-              zapiszStan();
-          }
+        const f1 = w1.toGeoJSON(), f2 = w2.toGeoJSON();
+        const u = polaczObszary(f1, f2);
+
+        const p1 = f1.properties || {}, p2 = f2.properties || {};
+        const fid = [p1.frakcja, p2.frakcja].find(id => id && frakcje[id]);     // wynik dziedziczy frakcję pierwszego obszaru
+        const nazwa1 = p1.name || p1.NAME || p1.SUBJECTO || '';
+        const odp = prompt("Aneksja zakończona! Podaj nazwę nowego terytorium:", nazwa1);
+        const nazwa = ((odp === null ? nazwa1 : odp) || '').trim();
+
+        w1.remove(); w2.remove();
+
+        const nowe = L.geoJSON(u);
+        nowe.getLayers().forEach(nk => {
+          nk.addTo(map);
+          nk.options.pmIgnore = false;
+          L.PM.reInitLayer(nk);
+          nk.feature = nk.feature || { type: "Feature", properties: {} };
+          nk.feature.properties = { ...p1, name: nazwa || undefined };
+          if (!nazwa) delete nk.feature.properties.name;
+          if (fid) zastosujFrakcje(nk, fid); else nk.setStyle(DOMYSLNY_STYL_OBSZARU);
+          if (nazwa) nk.bindTooltip(nazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: KLASA_TOOLTIPA });
+          dodajEdycjeIKlikanie(nk);
+        });
+        zapiszStan();
+        pokazKomunikat('Aneksja zakończona.');
       } catch (err) {
-          [w1, w2].forEach(w => { const id = w.feature?.properties?.frakcja; id ? zastosujFrakcje(w, id) : w.setStyle({ color: '#3388ff' }); });
+        console.error('Błąd aneksji:', err);
+        [w1, w2].forEach(w => { if (map.hasLayer(w)) przywrocStylObszaru(w); });
+        pokazKomunikat('Nie udało się połączyć obszarów: ' + (err && err.message ? err.message : err), true);
       }
     }
 
@@ -677,7 +836,24 @@
       layer.on('remove', layer._usunGrot);
     }
 
+    // Zdejmuje obiekt z frakcji: usuwa właściwość "frakcja" i przywraca neutralny wygląd
+    function zastosujBrakFrakcji(layer) {
+      layer.feature = layer.feature || { type: "Feature", properties: {} };
+      layer.feature.properties = layer.feature.properties || {};
+      delete layer.feature.properties.frakcja;
+      if (layer instanceof L.Marker) {
+          if (layer.feature.properties.iconType) zastosujIkone(layer, layer.feature.properties.iconType, layer.feature.properties.iconUrl);
+      } else if (layer.feature.properties.isArrow && layer instanceof L.Polyline) {
+          stylujStrzalke(layer, '#10b981');
+      } else if (layer instanceof L.Polygon) {
+          layer.setStyle(DOMYSLNY_STYL_OBSZARU);
+      } else if (layer instanceof L.Polyline) {
+          layer.setStyle({ color: '#3388ff' });
+      }
+    }
+
     function zastosujFrakcje(layer, id) {
+      if (id === BRAK_FRAKCJI) { zastosujBrakFrakcji(layer); return; }
       const f = frakcje[id];
       if (!f) return;
       layer.feature = layer.feature || { type: "Feature", properties: {} };
@@ -700,7 +876,7 @@
       layer.feature = layer.feature || { type: "Feature", properties: {} };
 
       if (e.shape === 'Marker') {
-          layer.feature.properties.frakcja = aktywnaFrakcja; 
+          if (frakcje[aktywnaFrakcja]) layer.feature.properties.frakcja = aktywnaFrakcja;
           oczekujacyMarker = layer;
           document.getElementById('icon-modal').style.display = 'flex';
       } else if (e.shape === 'Line') {
@@ -808,13 +984,20 @@
       for (const [id, f] of Object.entries(frakcje)) {
           const opt = document.createElement('option'); opt.value = id; opt.textContent = f.nazwa; selectFrakcji.appendChild(opt);
       }
-      if(!frakcje[aktywnaFrakcja]) aktywnaFrakcja = Object.keys(frakcje)[0];
+      const optBrak = document.createElement('option'); optBrak.value = BRAK_FRAKCJI; optBrak.textContent = '— Bez frakcji —'; selectFrakcji.appendChild(optBrak);
+      if (aktywnaFrakcja !== BRAK_FRAKCJI && !frakcje[aktywnaFrakcja]) aktywnaFrakcja = Object.keys(frakcje)[0];
       selectFrakcji.value = aktywnaFrakcja;
-      if(frakcje[aktywnaFrakcja]) kolorInput.value = frakcje[aktywnaFrakcja].kolor;
+      kolorInput.disabled = aktywnaFrakcja === BRAK_FRAKCJI;
+      if (frakcje[aktywnaFrakcja]) kolorInput.value = frakcje[aktywnaFrakcja].kolor;
     }
     
-    selectFrakcji.addEventListener('change', () => { aktywnaFrakcja = selectFrakcji.value; kolorInput.value = frakcje[aktywnaFrakcja].kolor; });
+    selectFrakcji.addEventListener('change', () => {
+      aktywnaFrakcja = selectFrakcji.value;
+      kolorInput.disabled = aktywnaFrakcja === BRAK_FRAKCJI;
+      if (frakcje[aktywnaFrakcja]) kolorInput.value = frakcje[aktywnaFrakcja].kolor;
+    });
     kolorInput.addEventListener('input', () => {
+      if (!frakcje[aktywnaFrakcja]) return;
       frakcje[aktywnaFrakcja].kolor = kolorInput.value;
       map.pm.getGeomanLayers().forEach(l => { if (l.feature?.properties?.frakcja === aktywnaFrakcja) zastosujFrakcje(l, aktywnaFrakcja); });
     });
@@ -830,6 +1013,39 @@
       const losowy = '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
       frakcje[id] = { nazwa, kolor: losowy }; aktywnaFrakcja = id;
       odswiezListeFrakcji(); autozapis();
+    });
+
+    document.getElementById('usun-frakcje-btn').addEventListener('click', () => {
+      const id = aktywnaFrakcja;
+      const inne = Object.entries(frakcje).filter(([k]) => k !== id);
+      if (!frakcje[id]) { alert('Opcji „Bez frakcji” nie można usunąć. Wybierz na liście konkretną frakcję.'); return; }
+      if (inne.length === 0) { alert("Nie można usunąć jedynej frakcji."); return; }
+
+      let cel = inne[0][0];
+      if (inne.length > 1) {
+        const lista = inne.map(([, f], i) => (i + 1) + ". " + f.nazwa).join("\n");
+        const odp = prompt('Usuwasz frakcję "' + frakcje[id].nazwa + '".\nDo której frakcji przenieść jej obiekty i jednostki?\n\n' + lista + "\n\nWpisz numer:", "1");
+        if (odp === null) return;
+        const nr = parseInt(odp, 10);
+        if (!(nr >= 1 && nr <= inne.length)) { alert("Niepoprawny numer – nic nie usunięto."); return; }
+        cel = inne[nr - 1][0];
+      } else if (!confirm('Usunąć frakcję "' + frakcje[id].nazwa + '"?\nJej obiekty zostaną przeniesione do frakcji "' + inne[0][1].nazwa + '".')) return;
+
+      // Obiekty usuwanej frakcji przechodzą do zastępczej (we wszystkich klatkach)
+      for (const stan of Object.values(klatki)) {
+        for (const f of ((stan && stan.features) || [])) {
+          if (f.properties && f.properties.frakcja === id) f.properties.frakcja = cel;
+        }
+      }
+      // Wcześniejsze usunięcia, które wskazywały na tę frakcję, wskazują teraz na nową zastępczą
+      for (const k of Object.keys(usunieteFrakcje)) { if (usunieteFrakcje[k] === id) usunieteFrakcje[k] = cel; }
+      if (czyUUID(id)) usunieteFrakcje[id] = cel;
+
+      delete frakcje[id];
+      aktywnaFrakcja = cel;
+      odswiezListeFrakcji();
+      ustawCzas(czasTeraz);   // przerysowuje mapę z nowymi kolorami
+      autozapis();
     });
 
     malujBtn.addEventListener('click', () => {
@@ -905,6 +1121,60 @@
       }, 300);
     });
 
+    // Scalanie klatek z importu z obecną osią czasu (nic nie jest kasowane)
+    // Kopia obiektu z własnymi właściwościami (geometria może być wspólna) – klatki nie mogą dzielić jednego obiektu
+    const lekkaKopia = f => ({ ...f, properties: { ...(f.properties || {}) } });
+    const jestJednostka = f => f.geometry && f.geometry.type === 'Point' && f.properties && f.properties.name && f.properties.iconType !== 'battle';
+    function scalKlatki(importowane) {
+      const wynik = { ...klatki };
+      const poprzedniaKlatka = (t) => {
+        let best = null;
+        for (const k of Object.keys(wynik)) { const n = Number(k); if (n < t && (best === null || n > best)) best = n; }
+        return best;
+      };
+      const czasy = Object.keys(importowane).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      for (const t of czasy) {
+        const impFeatures = (importowane[t] && importowane[t].features) || [];
+        const istniejaca = wynik[t];
+        if (istniejaca) {
+          // Ta sama chwila: dokładamy brakujące elementy, jednostki po nazwie, reszta po geometrii
+          const nazwy = new Set(istniejaca.features.filter(jestJednostka).map(f => f.properties.name));
+          const geometrie = new Set(istniejaca.features.map(f => JSON.stringify(f.geometry)));
+          const dodaj = impFeatures.filter(f => jestJednostka(f) ? !nazwy.has(f.properties.name) : !geometrie.has(JSON.stringify(f.geometry)));
+          wynik[t] = { type: "FeatureCollection", features: [...istniejaca.features, ...dodaj] };
+        } else {
+          // Nowa chwila: przenosimy jednostki z poprzedniej klatki, żeby nie zniknęły z mapy
+          const pk = poprzedniaKlatka(t);
+          const nazwyImport = new Set(impFeatures.filter(jestJednostka).map(f => f.properties.name));
+          const przeniesione = pk !== null ? wynik[pk].features.filter(f => jestJednostka(f) && !nazwyImport.has(f.properties.name)).map(lekkaKopia) : [];
+          wynik[t] = { type: "FeatureCollection", features: [...przeniesione, ...impFeatures] };
+        }
+      }
+      return wynik;
+    }
+
+    // Uzupełnianie klatek: granice i jednostki często pochodzą z różnych źródeł (JSON vs tabela unit_positions)
+    // i trafiają do osobnych klatek. Ponieważ edytor pokazuje wyłącznie ostatnią klatkę, klatka bez granic
+    // zakrywałaby granice, a klatka bez jednostek – jednostki. Dlatego klatce, której brakuje jednego z tych
+    // elementów, dokładamy ostatnio znany stan z wcześniejszych klatek.
+    function uzupelnijKlatki(obj) {
+      const jestObszar = f => f.geometry && f.geometry.type !== 'Point';
+      const czasy = Object.keys(obj).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      let ostObszary = [], ostJednostki = [];
+      for (const t of czasy) {
+        const stan = obj[t];
+        if (!stan || !Array.isArray(stan.features)) continue;
+        let feats = stan.features;
+        const dodatki = [];
+        if (!feats.some(jestObszar) && ostObszary.length) dodatki.push(...ostObszary.map(lekkaKopia));
+        if (!feats.some(jestJednostka) && ostJednostki.length) dodatki.push(...ostJednostki.map(lekkaKopia));
+        if (dodatki.length) { feats = [...feats, ...dodatki]; obj[t] = { type: "FeatureCollection", features: feats }; }
+        const ob = feats.filter(jestObszar); if (ob.length) ostObszary = ob;
+        const jd = feats.filter(jestJednostka); if (jd.length) ostJednostki = jd;
+      }
+      return obj;
+    }
+
     // 9. Import / Export Local
     document.getElementById('export-btn').addEventListener('click', () => {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ format: "kampania-v2", frakcje, klatki, rozkazy: lokalneRozkazy }));
@@ -918,10 +1188,32 @@
       reader.onload = (e) => {
           try {
               const d = JSON.parse(e.target.result);
-              if (d.frakcje || d.klatki) { 
-                  if (d.frakcje) { Object.assign(frakcje, d.frakcje); odswiezListeFrakcji(); }
-                  if (d.rozkazy) { lokalneRozkazy = d.rozkazy; }
-                  if (d.klatki) { klatki = d.klatki; naprawRelacjeFrakcji(); autozapis(); odswiezZnaczniki(); ustawCzas(czasTeraz); }
+              if (d.frakcje || d.klatki) {
+                  // Frakcje: łączymy po nazwie, istniejące (z bazy) zachowują swój kolor i id
+                  // Dodajemy tylko te frakcje z pliku, których używają importowane klatki
+                  const { mapaId, dodane } = dolaczFrakcje(d.frakcje, d.klatki);
+                  odswiezListeFrakcji();
+
+                  // Rozkazy: dołączamy do obecnych, bez duplikatów
+                  if (Array.isArray(d.rozkazy)) {
+                      const klucz = r => [r.unitName, r.issued_at, r.description].join('|');
+                      const znane = new Set(lokalneRozkazy.map(klucz));
+                      d.rozkazy.forEach(r => { if (!znane.has(klucz(r))) lokalneRozkazy.push(r); });
+                  }
+
+                  // Klatki: dołączamy do osi czasu, jednostki z bazy zostają
+                  if (d.klatki) {
+                      for (const stan of Object.values(d.klatki)) {
+                          for (const f of (stan.features || [])) {
+                              const fr = f.properties && f.properties.frakcja;
+                              if (fr && mapaId[fr]) f.properties.frakcja = mapaId[fr];
+                          }
+                      }
+                      klatki = uzupelnijKlatki(scalKlatki(d.klatki));
+                      naprawRelacjeFrakcji(); autozapis(); odswiezZnaczniki(); ustawCzas(czasTeraz);
+                      alert("Dołączono klatki z pliku (" + Object.keys(d.klatki).length + "). Jednostki wczytane z bazy zostały zachowane."
+                          + (dodane.length ? "\n\nDodane nowe frakcje: " + dodane.join(", ") + "\n(możesz je usunąć przyciskiem z ikoną kosza)" : ""));
+                  }
               } else if (d.type === "FeatureCollection" || d.features) {
                   const obecne = map.pm.getGeomanLayers().map(l => l.toGeoJSON());
                   odtworzStan({ type: "FeatureCollection", features: [...obecne, ...d.features] });
@@ -933,9 +1225,111 @@
       reader.readAsText(file); e.target.value = ''; 
     });
 
+    // ---- Zapis granic: mały ładunek, żeby zmieścić się w limicie czasu zapytania w Supabase ----
+    // Granice upraszczamy (tolerancja w stopniach, 0.002 ≈ 200 m). Ustaw 0, aby wyłączyć upraszczanie;
+    // większa wartość (np. 0.01) = mniejsze dane. Gdy zapis kończy się timeoutem, zwiększ tę wartość.
+    const UPROSZCZENIE_GRANIC = 0.002;
+    const ZACHOWANE_WLASCIWOSCI = ['name', 'NAME', 'SUBJECTO', 'frakcja', 'isArrow', 'color', 'description', 'result'];
+
+    const jestPoligonem = f => f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon');
+
+    function zaokraglijWspolrzedne(c) {
+      return typeof c[0] === 'number' ? [Math.round(c[0] * 1e5) / 1e5, Math.round(c[1] * 1e5) / 1e5] : c.map(zaokraglijWspolrzedne);
+    }
+    function poprawnyPoligon(geom) {
+      const pierscienie = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+      return pierscienie.every(poly => poly.every(ring => ring.length >= 4));
+    }
+    function odchudzObszar(f) {
+      const props = f.properties || {};
+      const czyste = {};
+      ZACHOWANE_WLASCIWOSCI.forEach(k => { if (props[k] !== undefined) czyste[k] = props[k]; });
+      let geom = f.geometry;
+      if (UPROSZCZENIE_GRANIC > 0) {
+        try {
+          const u = turf.simplify({ type: 'Feature', properties: {}, geometry: geom }, { tolerance: UPROSZCZENIE_GRANIC, highQuality: false });
+          if (u && u.geometry && poprawnyPoligon(u.geometry)) geom = u.geometry;
+        } catch (e) { /* zostawiamy oryginał */ }
+      }
+      return { type: 'Feature', properties: czyste, geometry: { type: geom.type, coordinates: zaokraglijWspolrzedne(geom.coordinates) } };
+    }
+    function takieSameObszary(a, b) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i].geometry !== b[i].geometry && JSON.stringify(a[i].geometry) !== JSON.stringify(b[i].geometry)) return false;
+        if (JSON.stringify(a[i].properties || {}) !== JSON.stringify(b[i].properties || {})) return false;
+      }
+      return true;
+    }
+
+    // Granice zapisujemy tylko w klatkach, w których się zmieniły (reszta jest uzupełniana przy wczytaniu).
+    function zbudujGranice() {
+      const wynik = {};
+      let ostatnie = null;
+      const czasy = Object.keys(klatki).sort((a, b) => Number(a) - Number(b));
+      for (const ts of czasy) {
+        const feats = (klatki[ts] && klatki[ts].features) || [];
+        const obszary = feats.filter(jestPoligonem);
+        const bitwy = feats.filter(f => f.geometry && f.geometry.type === 'Point' && f.properties && f.properties.iconType === 'battle' && f.properties.name);
+        const lista = [];
+        if (!ostatnie || !takieSameObszary(ostatnie, obszary)) {
+          obszary.forEach(f => lista.push(odchudzObszar(f)));
+          ostatnie = obszary;
+        }
+        bitwy.forEach(f => lista.push(f));
+        wynik[ts] = lista;
+      }
+      return wynik;
+    }
+
+    async function zapiszGraniceDoBazy() {
+      const nowaKonfiguracja = { ...((battleData && battleData.map_config) || {}), borders_timeline: zbudujGranice() };
+      const json = JSON.stringify(nowaKonfiguracja);
+      if (battleData && JSON.stringify(battleData.map_config || {}) === json) return; // nic się nie zmieniło
+
+      const mb = json.length / 1e6;
+      console.log('Rozmiar map_config do zapisu: ' + mb.toFixed(2) + ' MB');
+      if (mb > 4 && !confirm('Dane granic ważą ' + mb.toFixed(1) + ' MB – zapis może przekroczyć limit czasu bazy.\n\nKontynuować?')) {
+        throw new Error('Zapis przerwany. Zwiększ UPROSZCZENIE_GRANIC w kodzie edytora, aby zmniejszyć dane.');
+      }
+      const { error } = await db.from('campaigns').update({ map_config: nowaKonfiguracja }).eq('id', BATTLE_ID);
+      if (error) {
+        const timeout = /timeout/i.test(error.message);
+        throw new Error('Błąd aktualizacji kampanii: ' + error.message + (timeout
+          ? '\n\nDane granic są za duże (' + mb.toFixed(1) + ' MB) dla limitu czasu bazy. Zwiększ UPROSZCZENIE_GRANIC w kodzie edytora (np. na 0.01) i zapisz ponownie.' : ''));
+      }
+      if (battleData) battleData.map_config = nowaKonfiguracja;
+    }
+
     // 10. ZAPIS DO BAZY SUPABASE
     document.getElementById('export-db-btn').addEventListener('click', async () => {
       if (Object.keys(klatki).length === 0) return alert("Brak klatek do eksportu!");
+
+      // ZABEZPIECZENIE: porównanie jednostek na osi czasu z jednostkami w bazie (przed jakimkolwiek kasowaniem)
+      const aktywneJednostki = new Set();
+      for (const stan of Object.values(klatki)) {
+          if (!stan.features) continue;
+          for (const feature of stan.features) {
+              if (feature.geometry.type === 'Point' && feature.properties?.name && feature.properties?.iconType !== 'battle') {
+                  aktywneJednostki.add(feature.properties.name);
+              }
+          }
+      }
+      const { data: dbUnitsPre, error: dbUnitsErr } = await db.from('units').select('id, name').eq('campaigns_id', BATTLE_ID);
+      if (dbUnitsErr) return alert("Nie udało się pobrać jednostek z bazy: " + dbUnitsErr.message);
+      const dbUnits = dbUnitsPre || [];
+      const osierocone = dbUnits.filter(u => !aktywneJednostki.has(u.name));
+      let usunOsierocone = false;
+
+      if (dbUnits.length > 0 && aktywneJednostki.size === 0) {
+          if (!confirm("Na osi czasu nie ma żadnych jednostek, a w bazie jest ich " + dbUnits.length + ".\n\nZapis usunie ich pozycje i rozkazy. Czy na pewno kontynuować?")) return;
+      }
+      if (osierocone.length > 0) {
+          usunOsierocone = confirm(
+              "Tych jednostek z bazy nie ma na osi czasu:\n• " + osierocone.map(u => u.name).join("\n• ") +
+              "\n\nOK = usuń je z bazy\nAnuluj = zostaw je w bazie razem z pozycjami i rozkazami"
+          );
+      }
       const btn = document.getElementById('export-db-btn');
       btn.innerHTML = "<i class='fa-solid fa-spinner fa-spin'></i> Wysyłanie..."; btn.classList.add("bg-yellow-600");
 
@@ -947,6 +1341,7 @@
               let safeKey = oldKey;
               if (!isValidUUID(safeKey)) {
                   safeKey = crypto.randomUUID(); 
+                  for (const k of Object.keys(usunieteFrakcje)) { if (usunieteFrakcje[k] === oldKey) usunieteFrakcje[k] = safeKey; }
                   for (const stan of Object.values(klatki)) {
                       if (!stan.features) continue;
                       for (const feature of stan.features) {
@@ -960,36 +1355,69 @@
           odswiezListeFrakcji();
 
           for (const [key, f] of Object.entries(frakcje)) {
-              const { error: sideErr } = await db.from('sides').upsert({ id: key, campaigns_id: BATTLE_ID, name: f.nazwa, color: f.kolor });
-              if (sideErr) throw new Error("Błąd zapisu frakcji: " + sideErr.message);
+              // sides.color to VARCHAR(7) (#rrggbb), sides.name – VARCHAR(100)
+              if (!/^#[0-9a-f]{6}$/i.test(f.kolor || '')) f.kolor = '#888888';
+              const { error: sideErr } = await db.from('sides').upsert({ id: key, campaigns_id: BATTLE_ID, name: String(f.nazwa || 'Frakcja').slice(0, 100), color: f.kolor });
+              if (sideErr) throw new Error('Błąd zapisu frakcji "' + f.nazwa + '": ' + sideErr.message);
           }
 
-          const aktywneJednostki = new Set();
-          for (const stan of Object.values(klatki)) {
-              if (!stan.features) continue;
-              for (const feature of stan.features) {
-                  if (feature.geometry.type === 'Point' && feature.properties?.name && feature.properties?.iconType !== 'battle') {
-                      aktywneJednostki.add(feature.properties.name);
-                  }
+          // Usunięte frakcje: jednostki przechodzą na zastępczą, potem kasujemy wiersz z tabeli sides
+          for (const [staryId, nowyId] of Object.entries(usunieteFrakcje)) {
+              const cel = frakcje[nowyId] ? nowyId : Object.keys(frakcje)[0];
+              const rU = await db.from('units').update({ side_id: cel }).eq('campaigns_id', BATTLE_ID).eq('side_id', staryId);
+              if (rU.error) throw new Error("Błąd przenoszenia jednostek usuniętej frakcji: " + rU.error.message);
+              const rS = await db.from('sides').delete().eq('id', staryId).eq('campaigns_id', BATTLE_ID);
+              if (rS.error) throw new Error("Błąd usuwania frakcji z bazy: " + rS.error.message);
+              delete usunieteFrakcje[staryId];
+          }
+
+          // Najpierw granice (najcięższe zapytanie) – jeśli się nie uda, nic jeszcze nie zostało skasowane
+          await zapiszGraniceDoBazy();
+
+          const porcje = (tab, n = 80) => { const r = []; for (let i = 0; i < tab.length; i += n) r.push(tab.slice(i, i + n)); return r; };
+
+          // Czyścimy pozycje i rozkazy tylko jednostek, które zaraz zapisujemy od nowa (i ewentualnie tych do usunięcia)
+          const idDoWyczyszczenia = dbUnits.filter(u => aktywneJednostki.has(u.name) || usunOsierocone).map(u => u.id);
+          for (const part of porcje(idDoWyczyszczenia)) {
+              const r1 = await db.from('unit_positions').delete().in('unit_id', part);
+              if (r1.error) throw new Error("Błąd czyszczenia pozycji: " + r1.error.message);
+              const r2 = await db.from('orders').delete().in('unit_id', part);
+              if (r2.error) throw new Error("Błąd czyszczenia rozkazów: " + r2.error.message);
+          }
+
+          if (usunOsierocone && osierocone.length > 0) {
+              for (const part of porcje(osierocone.map(u => u.id))) {
+                  const r0 = await db.from('unit_events').delete().in('unit_id', part);
+                  if (r0.error) throw new Error("Błąd usuwania zdarzeń jednostek: " + r0.error.message);
+                  const r3 = await db.from('units').delete().in('id', part);
+                  if (r3.error) throw new Error("Nie udało się usunąć jednostek z bazy: " + r3.error.message);
               }
           }
 
-          const { data: dbUnits } = await db.from('units').select('id, name').eq('campaigns_id', BATTLE_ID);
-          const dbUnitIds = dbUnits ? dbUnits.map(u => u.id) : [];
-
-          if (dbUnitIds.length > 0) {
-              await db.from('unit_positions').delete().in('unit_id', dbUnitIds);
-              await db.from('orders').delete().in('unit_id', dbUnitIds);
-          }
-
-          if (dbUnits) {
-              const unitsToDelete = dbUnits.filter(u => !aktywneJednostki.has(u.name)).map(u => u.id);
-              if (unitsToDelete.length > 0) { await db.from('units').delete().in('id', unitsToDelete); }
-          }
-
           const unitsMap = new Map();
-          if (dbUnits) {
-              dbUnits.forEach(u => { if (aktywneJednostki.has(u.name)) unitsMap.set(u.name, u.id); });
+          dbUnits.forEach(u => { if (aktywneJednostki.has(u.name)) unitsMap.set(u.name, u.id); });
+
+          // Strona jednostki w bazie = jej frakcja w najpóźniejszej klatce (tak zapisuje się przemalowanie jednostki)
+          const stronaJednostki = new Map();
+          for (const ts of Object.keys(klatki).sort((a, b) => Number(a) - Number(b))) {
+              for (const f of ((klatki[ts] && klatki[ts].features) || [])) {
+                  const pr = f.properties || {};
+                  if (f.geometry && f.geometry.type === 'Point' && pr.name && pr.iconType !== 'battle') stronaJednostki.set(pr.name, (pr.frakcja && frakcje[pr.frakcja]) ? pr.frakcja : null);   // null = bez frakcji
+              }
+          }
+          const podpowiedzNull = "\n\nJednostka bez frakcji wymaga, by kolumna units.side_id dopuszczała NULL. W Supabase (SQL Editor) wykonaj:\nALTER TABLE units ALTER COLUMN side_id DROP NOT NULL;";
+          const wgStrony = new Map();
+          dbUnits.forEach(u => {
+              if (!unitsMap.has(u.name) || !stronaJednostki.has(u.name)) return;
+              const sid = stronaJednostki.get(u.name);
+              if (!wgStrony.has(sid)) wgStrony.set(sid, []);
+              wgStrony.get(sid).push(u.id);
+          });
+          for (const [sid, ids] of wgStrony) {
+              for (const part of porcje(ids)) {
+                  const rS = await db.from('units').update({ side_id: sid }).in('id', part);
+                  if (rS.error) throw new Error("Błąd aktualizacji frakcji jednostek: " + rS.error.message + (sid === null ? podpowiedzNull : ""));
+              }
           }
 
           const battlesMap = new Map();
@@ -1037,7 +1465,7 @@
                       else {
                           let unitId;
                           if (!unitsMap.has(props.name)) {
-                              const sideId = props.frakcja && frakcje[props.frakcja] ? props.frakcja : Object.keys(frakcje)[0];
+                              const sideId = stronaJednostki.has(props.name) ? stronaJednostki.get(props.name) : (props.frakcja && frakcje[props.frakcja] ? props.frakcja : Object.keys(frakcje)[0]);
                               
                               let { data: existingUnit, error: checkErr } = await db.from('units')
                                   .select('id')
@@ -1054,7 +1482,7 @@
                                       campaigns_id: BATTLE_ID, side_id: sideId, name: props.name, unit_type: props.iconType || 'infantry', symbol: props.iconType || 'none'
                                   }).select('id').single();
                                   
-                                  if (unitErr) throw new Error("Błąd dodawania jednostki: " + unitErr.message);
+                                  if (unitErr) throw new Error("Błąd dodawania jednostki: " + unitErr.message + (sideId === null ? podpowiedzNull : ""));
                                   unitId = newUnit.id; 
                               }
                               unitsMap.set(props.name, unitId);
@@ -1096,9 +1524,6 @@
                   if (ordErr) throw new Error("Błąd zapisu rozkazów: " + ordErr.message);
               }
           }
-          
-          const { error: campErr } = await db.from('campaigns').update({ map_config: { borders_timeline: graniceWKlatkach } }).eq('id', BATTLE_ID);
-          if (campErr) throw new Error("Błąd aktualizacji kampanii: " + campErr.message);
 
           btn.innerHTML = "<i class='fa-solid fa-check'></i> Zapisano"; btn.classList.replace("bg-yellow-600", "bg-green-600");
           autozapis(); 
@@ -1112,6 +1537,7 @@
     });
 
     document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && wybraneDoAneksji.length) { wyczyscZaznaczenieAneksji(); pokazKomunikat('Anulowano aneksję.'); }
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
           if (historiaMapy.length > 1) {
               historiaMapy.pop();
