@@ -156,10 +156,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
   <script>
-    const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
-    const db = window.supabaseClient || 
-      (typeof supabase !== 'undefined' && typeof supabase.from === 'function' ? supabase : window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY));
+    // Klient Supabase tworzy supabaseClient.js (ustawia window.supabaseClient).
+    // Stałych SUPABASE_URL / SUPABASE_KEY NIE deklarujemy tu ponownie – są już zadeklarowane w supabaseClient.js
+    // (ponowna deklaracja const powodowała SyntaxError i skrypt w ogóle się nie uruchamiał).
+    const db = window.supabaseClient;
 
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -185,6 +185,7 @@
     let sideById = new Map();
     let positionsByUnit = new Map(); 
     let destroyedAt = new Map(); 
+    let removedAt = new Map(); // unit_id -> posortowane czasy zdarzeń 'removed' (jednostka usunięta w edytorze)
     let borderFrames = []; 
     let allFrameTimes = []; 
 
@@ -304,6 +305,16 @@
         if (!Number.isFinite(t)) return;
         if (!destroyedAt.has(e.unit_id) || t < destroyedAt.get(e.unit_id)) destroyedAt.set(e.unit_id, t);
       });
+
+      removedAt = new Map();
+      dataCache.events.forEach(e => {
+        if (e.event_type !== 'removed') return;
+        const t = new Date(e.occurred_at).getTime();
+        if (!Number.isFinite(t)) return;
+        if (!removedAt.has(e.unit_id)) removedAt.set(e.unit_id, []);
+        removedAt.get(e.unit_id).push(t);
+      });
+      removedAt.forEach(arr => arr.sort((a, b) => a - b));
 
       let cfg = campaign.map_config;
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch (e) { cfg = null; } }
@@ -457,17 +468,29 @@
       return lo < allFrameTimes.length ? allFrameTimes[lo] : null;
     }
 
+    // Jednostka jest usunięta w chwili t, jeśli między jej ostatnią pozycją (<= t) a t wystąpiło zdarzenie 'removed'.
+    // Późniejsza pozycja (ponowne dodanie w edytorze) przywraca jednostkę.
+    function isRemoved(unitId, timeMs) {
+      const rem = removedAt.get(unitId);
+      if (!rem || rem.length === 0) return false;
+      const arr = positionsByUnit.get(unitId);
+      if (!arr || arr.length === 0) return false;
+      let lastT = null;
+      for (let i = arr.length - 1; i >= 0; i--) if (arr[i].t <= timeMs) { lastT = arr[i].t; break; }
+      if (lastT === null) return false;
+      return rem.some(r => r > lastT && r <= timeMs);
+    }
+
     function getUnitState(unitId, timeMs, ignoreRemoval = false) {
       const arr = positionsByUnit.get(unitId);
       if (!arr || arr.length === 0) return null;
       if (timeMs < arr[0].t) return null;
+      if (!ignoreRemoval && isRemoved(unitId, timeMs)) return null;
 
       const last = arr[arr.length - 1];
       if (timeMs >= last.t) {
-        if (!ignoreRemoval) {
-          const nf = firstFrameAfter(last.t);
-          if (nf !== null && timeMs >= nf) return null;
-        }
+        // Jednostka zostaje na ostatniej znanej pozycji (znika dopiero przez zdarzenie destroyed/eliminated,
+        // obsługiwane w updateVisuals). Wcześniej znikała na pierwszej klatce globalnej po ostatniej pozycji.
         return last;
       }
 
@@ -706,6 +729,11 @@
       dataCache.units.forEach(unit => {
         const side = sideById.get(unit.side_id);
         const color = side ? side.color : '#ffffff';
+        // Jednostka usunięta w edytorze (także zniszczona) nie jest już widoczna
+        if (isRemoved(unit.id, currentTimeMs)) {
+          if (markers[unit.id]) { map.removeLayer(markers[unit.id]); delete markers[unit.id]; }
+          return;
+        }
         const destroyedT = destroyedAt.get(unit.id);
         const isDestroyed = destroyedT !== undefined && destroyedT <= currentTimeMs;
         const isExploding = isDestroyed && currentTimeMs <= destroyedT + EXPLOSION_MS;
@@ -818,6 +846,7 @@
     function updateSidePanel() {
       const unit = dataCache.units.find(u => u.id === selectedUnitId);
       if (!unit) return;
+      if (isRemoved(unit.id, currentTimeMs)) { closePanel(); return; }
       const side = sideById.get(unit.side_id);
       const sideCol = side ? side.color : '#6b7280';
 

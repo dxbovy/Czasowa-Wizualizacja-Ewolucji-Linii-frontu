@@ -270,6 +270,8 @@
     // Frakcje usunięte w edytorze, które istnieją w bazie: id -> id frakcji zastępczej.
     // Przy zapisie do bazy ich jednostki są przepinane na zastępczą, a wiersz w tabeli sides jest kasowany.
     let usunieteFrakcje = {};
+    // Jednostki usunięte z mapy w edytorze: nazwa -> [czasy w ms]. Zapisywane w unit_events jako 'removed'.
+    let usuniecia = {};
     // Specjalna "frakcja" w liście wyboru: malowanie nią zdejmuje obiekt z jakiejkolwiek frakcji
     const BRAK_FRAKCJI = '__brak__';
     const czyUUID = (u) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(u);
@@ -307,6 +309,22 @@
         return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
+    // Pobieranie ze stronicowaniem (Supabase domyślnie zwraca max 1000 wierszy na zapytanie)
+    async function pobierzPoUnitId(tabela, ids) {
+      const wynik = [];
+      for (let i = 0; i < ids.length; i += 80) {
+        const part = ids.slice(i, i + 80);
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await db.from(tabela).select('*').in('unit_id', part)
+            .order('id', { ascending: true }).range(from, from + 999);
+          if (error) throw new Error('Tabela ' + tabela + ': ' + error.message);
+          wynik.push(...(data || []));
+          if (!data || data.length < 1000) break;
+        }
+      }
+      return wynik;
+    }
+
     // 4. ŁADOWANIE DANYCH Z BAZY
     async function loadBattleData() {
       const { data: b } = await db.from('campaigns').select('*').eq('id', BATTLE_ID).single();
@@ -339,7 +357,7 @@
       const { data: unitsData } = await db.from('units').select('*').eq('campaigns_id', BATTLE_ID);
       if (unitsData && unitsData.length > 0) {
           const unitIds = unitsData.map(u => u.id);
-          const { data: posData } = await db.from('unit_positions').select('*').in('unit_id', unitIds);
+          const posData = await pobierzPoUnitId('unit_positions', unitIds);
           
           if (posData && posData.length > 0) {
               posData.forEach(pos => {
@@ -361,7 +379,17 @@
               });
           }
 
-          const { data: ordData } = await db.from('orders').select('*').in('unit_id', unitIds);
+          usuniecia = {};
+          try {
+              const evData = await pobierzPoUnitId('unit_events', unitIds);
+              evData.filter(e => e.event_type === 'removed').forEach(e => {
+                  const u = unitsData.find(x => x.id === e.unit_id); if (!u) return;
+                  const t = new Date(e.occurred_at).getTime(); if (!Number.isFinite(t)) return;
+                  (usuniecia[u.name] = usuniecia[u.name] || []).push(t);
+              });
+          } catch (err) { console.warn('Nie wczytano zdarzeń usunięcia jednostek:', err); }
+
+          const ordData = await pobierzPoUnitId('orders', unitIds);
           if (ordData && ordData.length > 0) {
               ordData.forEach(o => {
                   const unit = unitsData.find(u => u.id === o.unit_id);
@@ -390,6 +418,7 @@
                   const { mapaId } = dolaczFrakcje(zapis.frakcje, zapis.klatki);
                   przemapujFrakcje(zapis.klatki, mapaId);
                   klatki = zapis.klatki;
+                  if (zapis.usuniecia) usuniecia = zapis.usuniecia;
               }
               if (zapis?.rozkazy) { lokalneRozkazy = zapis.rozkazy; }
           } catch(err) {}
@@ -1136,6 +1165,56 @@
     
     function najblizszaKlatka(t) { let wynik = null; for (const k of Object.keys(klatki)) { const n = Number(k); if (n <= t && (wynik === null || n > wynik)) wynik = n; } return wynik; }
     
+    // Zmiany jednostek względem poprzedniego stanu: usunięcie, dodanie, przesunięcie – obowiązują w kolejnych klatkach.
+    function zastosujZmianyJednostek(przed, po) {
+      const mapa = feats => { const m = new Map(); feats.filter(jestJednostka).forEach(f => m.set(f.properties.name, f)); return m; };
+      const A = mapa(przed), B = mapa(po);
+      const geo = f => JSON.stringify(f.geometry.coordinates);
+      const usuniete = [...A.keys()].filter(n => !B.has(n));
+      const dodane = [...B.keys()].filter(n => !A.has(n));
+      for (const r of [...usuniete]) {   // zmiana nazwy (ta sama pozycja) to nie usunięcie
+        const i = dodane.findIndex(a => geo(B.get(a)) === geo(A.get(r)));
+        if (i >= 0) { usuniete.splice(usuniete.indexOf(r), 1); dodane.splice(i, 1); }
+      }
+      const pozniejsze = Object.keys(klatki).map(Number).filter(k => k > czasTeraz).sort((a, b) => a - b);
+      const idx = (fr, n) => fr.features.findIndex(f => jestJednostka(f) && f.properties.name === n);
+      let ile = 0;
+
+      for (const [n, fNew] of B) {   // przesunięcie: aktualizujemy kolejne kopie przeniesione, które stały w starym miejscu
+        const fOld = A.get(n);
+        if (!fOld || geo(fOld) === geo(fNew)) continue;
+        if (fNew.properties && fNew.properties.przeniesiona) {
+          const i = po.indexOf(fNew); const { przeniesiona, ...reszta } = fNew.properties;
+          if (i >= 0) po[i] = { ...fNew, properties: reszta };
+        }
+        for (const t of pozniejsze) {
+          const fr = klatki[t]; const i = idx(fr, n);
+          if (i < 0 || !fr.features[i].properties.przeniesiona || geo(fr.features[i]) !== geo(fOld)) break;
+          fr.features[i] = { ...fr.features[i], geometry: JSON.parse(JSON.stringify(fNew.geometry)) }; ile++;
+        }
+      }
+      for (const n of usuniete) {
+        const lista = usuniecia[n] = usuniecia[n] || [];
+        if (!lista.includes(czasTeraz)) lista.push(czasTeraz);
+        for (const t of pozniejsze) {
+          const fr = klatki[t]; const i = idx(fr, n);
+          if (i < 0) break;
+          fr.features.splice(i, 1); ile++;
+        }
+      }
+      for (const n of dodane) {
+        if (usuniecia[n]) usuniecia[n] = usuniecia[n].filter(r => r !== czasTeraz);   // m.in. cofnięcie (Ctrl+Z) usunięcia
+        const nast = Math.min(Infinity, ...(usuniecia[n] || []).filter(r => r > czasTeraz));
+        for (const t of pozniejsze) {
+          if (t >= nast) break;
+          const fr = klatki[t];
+          if (idx(fr, n) >= 0) break;
+          const k = lekkaKopia(B.get(n)); k.properties.przeniesiona = true; fr.features.push(k); ile++;
+        }
+      }
+      return ile;
+    }
+
     function zapiszKlatke(stan) {
       const klucz = najblizszaKlatka(czasTeraz);
       const dokladna = klucz === czasTeraz;
@@ -1144,13 +1223,15 @@
       if (dokladna || !taSama) {
         const przed = poprzednia.features;
         klatki[czasTeraz] = stan;
+        const ileJ = zastosujZmianyJednostek(przed, stan.features);   // usunięcie / dodanie / przesunięcie jednostki w kolejnych klatkach
+        if (ileJ > 0) pokazKomunikat('Zmianę jednostek zastosowano także w ' + ileJ + ' kolejnych klatkach.');
         const ile = propagujGranice(przed, stan.features);      // granice/obszary: zmiana obowiązuje w kolejnych klatkach
         if (ile > 0) pokazKomunikat('Zmianę granic zastosowano także w ' + ile + ' kolejnych klatkach.');
         autozapis(); odswiezZnaczniki(); odswiezEtykiete();
       }
     }
 
-    function autozapis() { try { localStorage.setItem('kampania-autozapis-'+BATTLE_ID, JSON.stringify({ frakcje, klatki, rozkazy: lokalneRozkazy })); } catch (e) {} }
+    function autozapis() { try { localStorage.setItem('kampania-autozapis-'+BATTLE_ID, JSON.stringify({ frakcje, klatki, rozkazy: lokalneRozkazy, usuniecia })); } catch (e) {} }
     
     function odswiezEtykiete() {
       // UWAGA: Format daty posiada teraz na sztywno narzucony ROK, który widnieje w podglądzie
@@ -1239,17 +1320,26 @@
     function uzupelnijKlatki(obj) {
       const jestObszar = f => f.geometry && f.geometry.type !== 'Point';
       const czasy = Object.keys(obj).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
-      let ostObszary = [], ostJednostki = [];
+      // Jednostki przenosimy PO NAZWIE: jeśli klatka nie ma wpisu dla jednostki, która była w wcześniejszej klatce,
+      // dostaje kopię jej ostatniej pozycji (oznaczoną przeniesiona:true – nie jest zapisywana do bazy jako pozycja).
+      // Kopiowanie zatrzymuje zdarzenie usunięcia ('removed'): po nim jednostka nie wraca, chyba że ma własną pozycję.
+      let ostObszary = [];
+      const ostPoz = new Map();   // nazwa -> { f, t }
+      const usunieta = (nazwa, lastT, t) => (usuniecia[nazwa] || []).some(r => r > lastT && r <= t);
       for (const t of czasy) {
         const stan = obj[t];
         if (!stan || !Array.isArray(stan.features)) continue;
         let feats = stan.features;
         const dodatki = [];
         if (!feats.some(jestObszar) && ostObszary.length) dodatki.push(...ostObszary.map(lekkaKopia));
-        if (!feats.some(jestJednostka) && ostJednostki.length) dodatki.push(...ostJednostki.map(lekkaKopia));
+        const nazwyWKlatce = new Set(feats.filter(jestJednostka).map(f => f.properties.name));
+        for (const [nazwa, o] of ostPoz) {
+          if (nazwyWKlatce.has(nazwa) || usunieta(nazwa, o.t, t)) continue;
+          const k = lekkaKopia(o.f); k.properties.przeniesiona = true; dodatki.push(k);
+        }
         if (dodatki.length) { feats = [...feats, ...dodatki]; obj[t] = { type: "FeatureCollection", features: feats }; }
         const ob = feats.filter(jestObszar); if (ob.length) ostObszary = ob;
-        const jd = feats.filter(jestJednostka); if (jd.length) ostJednostki = jd;
+        feats.filter(jestJednostka).forEach(f => { if (!f.properties.przeniesiona) ostPoz.set(f.properties.name, { f, t }); });
       }
       return obj;
     }
@@ -1467,6 +1557,8 @@
               if (r1.error) throw new Error("Błąd czyszczenia pozycji: " + r1.error.message);
               const r2 = await db.from('orders').delete().in('unit_id', part);
               if (r2.error) throw new Error("Błąd czyszczenia rozkazów: " + r2.error.message);
+              const r2b = await db.from('unit_events').delete().in('unit_id', part).eq('event_type', 'removed');
+              if (r2b.error) throw new Error("Błąd czyszczenia zdarzeń usunięcia: " + r2b.error.message);
           }
 
           if (usunOsierocone && osierocone.length > 0) {
@@ -1574,7 +1666,7 @@
                               unitId = unitsMap.get(props.name); 
                           }
 
-                          pozycjeDoBazy.push({ unit_id: unitId, recorded_at: recordedAt, longitude: feature.geometry.coordinates[0], latitude: feature.geometry.coordinates[1], heading: 0, strength: 1000 });
+                          if (!props.przeniesiona) pozycjeDoBazy.push({ unit_id: unitId, recorded_at: recordedAt, longitude: feature.geometry.coordinates[0], latitude: feature.geometry.coordinates[1], heading: 0, strength: 1000 });
                       }
                   }
               }
@@ -1584,6 +1676,17 @@
           if (pozycjeDoBazy.length > 0) {
               const { error: posErr } = await db.from('unit_positions').insert(pozycjeDoBazy);
               if (posErr) throw new Error("Błąd zapisu pozycji: " + posErr.message);
+          }
+
+          // Usunięcia jednostek -> unit_events (event_type 'removed'); wizualizacja ukrywa jednostkę od tego momentu
+          const zdarzeniaUsuniec = [];
+          for (const [nazwa, czasy] of Object.entries(usuniecia)) {
+              const uid = unitsMap.get(nazwa); if (!uid) continue;
+              for (const t of czasy) zdarzeniaUsuniec.push({ id: crypto.randomUUID(), unit_id: uid, occurred_at: new Date(t).toISOString(), event_type: 'removed', description: 'Jednostka usunięta z mapy w edytorze' });
+          }
+          if (zdarzeniaUsuniec.length > 0) {
+              const { error: evErr } = await db.from('unit_events').insert(zdarzeniaUsuniec);
+              if (evErr) throw new Error("Błąd zapisu usunięć jednostek (unit_events, event_type 'removed'): " + evErr.message + " – jeśli w bazie jest ograniczenie CHECK na event_type, dodaj do niego wartość 'removed'.");
           }
 
           if (lokalneRozkazy.length > 0) {
