@@ -20,12 +20,12 @@
   </script>
 
   <style>
-    /* Odwrócenie kafelków OSM na mroczny, radarowy klimat (bez płatnego API) */
+    /* Odwrócenie kafelków OSM na mroczny, radarowy klimat */
     .leaflet-tile { filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
     .leaflet-control-zoom { border: none !important; }
     .leaflet-control-zoom a { background-color: #181920 !important; color: #10b981 !important; border-color: #262730 !important; }
 
-    /* Znaczniki jednostek – ten sam wygląd co w edytorze */
+    /* Znaczniki jednostek */
     .unit-badge {
       width: 32px; height: 32px; box-sizing: border-box;
       display: flex; align-items: center; justify-content: center;
@@ -44,6 +44,7 @@
       content: '✖'; color: #ef4444; font-size: 20px; font-weight: bold;
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     }
+    
     /* Wybuch w chwili zniszczenia */
     .unit-badge.exploding {
       box-shadow: 0 0 20px 10px #ef4444, 0 0 40px 20px #f59e0b !important;
@@ -67,6 +68,11 @@
       padding: 3px 8px !important; box-shadow: 0 2px 8px rgba(0,0,0,0.6) !important;
     }
     .map-tooltip::before { display: none; }
+
+    /* Płynna animacja dla wielokątów obszarów SVG na Leaflecie */
+    svg.leaflet-zoom-animated path {
+      transition: d 0.5s ease-out, fill 0.5s ease-out, stroke 0.5s ease-out;
+    }
 
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
@@ -143,20 +149,24 @@
 
   <!-- Skrypty -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Klient Supabase (musi leżeć w tym samym folderze co ten plik) -->
+  <!-- Klient Supabase -->
   <script src="supabaseClient.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Opcjonalny Turf.js jeśli potrzebny do interpolacji kształtów (użyjemy go do uproszczonego morfingu) -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
   <script>
-    // Klient bazy pochodzi z supabaseClient.js (window.supabaseClient).
-    // Dla starszej wersji pliku próbujemy też zmiennej globalnej "supabase".
-    const db = window.supabaseClient ||
-      (typeof supabase !== 'undefined' && typeof supabase.from === 'function' ? supabase : null);
+    const SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
+    const db = window.supabaseClient || 
+      (typeof supabase !== 'undefined' && typeof supabase.from === 'function' ? supabase : window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY));
+
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     // ---------- Stałe i słowniki ----------
     const GODZINA = 3600000;
-    const TICK_MS = 40;                    // odświeżanie odtwarzania (~25 FPS)
-    const EXPLOSION_MS = 6 * GODZINA;      // jak długo trwa wybuch po zniszczeniu jednostki
+    const TICK_MS = 40; 
+    const EXPLOSION_MS = 6 * GODZINA; 
 
     const ICONS = {
       army: 'fa-solid fa-shield-halved', cavalry: 'fa-solid fa-horse-head', corps: 'fa-solid fa-cubes',
@@ -173,17 +183,20 @@
     let campaign = null;
     let dataCache = { sides: [], units: [], positions: [], orders: [], events: [] };
     let sideById = new Map();
-    let positionsByUnit = new Map();       // unitId -> [{...pozycja, t}] posortowane po czasie
-    let destroyedAt = new Map();           // unitId -> ms zniszczenia
-    let borderFrames = [];                 // [{t, features}] – klatki granic i bitew z campaigns.map_config
-    let allFrameTimes = [];                // wszystkie momenty z klatkami (granice + pozycje)
+    let positionsByUnit = new Map(); 
+    let destroyedAt = new Map(); 
+    let borderFrames = []; 
+    let allFrameTimes = []; 
 
     let map = null;
     let markers = {};
     let battlesLayer = null;
-    let areasLayer = null;                 // granice państw / obszary frakcji (wielokąty z edytora)
-    let currentBorderIdx = -2;
-    let currentAreaSrc = -2;               // z której klatki pochodzą aktualnie narysowane granice
+    let areasLayer = null; 
+    
+    // Zmienne do kontroli interpolacji obszarów
+    let activePolygonsMap = new Map(); // name -> leafletLayer
+    let lastRenderedTimeMs = -1;
+
     let targetLine = null;
     let selectedUnitId = null;
     let selectedBattle = null;
@@ -193,12 +206,9 @@
     let startTimeMs = 0, endTimeMs = 0, currentTimeMs = 0;
     let playTimer = null;
 
-    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-
     // ---------- Start ----------
     async function init() {
       const params = new URLSearchParams(window.location.search);
-      // edytor przekazuje id kampanii w parametrze battle_id – obsługujemy też campaign_id
       const campaignId = params.get('campaign_id') || params.get('battle_id');
       if (!campaignId) { alert('Nie wybrano kampanii!'); window.location.href = 'bitwy.html'; return; }
 
@@ -220,7 +230,6 @@
     }
 
     // ---------- Pobieranie danych z Supabase ----------
-    // Supabase zwraca max 1000 wierszy na zapytanie, więc pobieramy stronami.
     async function fetchAll(table, applyFilter) {
       const PAGE = 1000;
       let all = [];
@@ -236,7 +245,7 @@
     }
 
     async function fetchByUnitIds(table, ids) {
-      const CHUNK = 80; // limit długości adresu URL przy filtrze .in()
+      const CHUNK = 80; 
       const jobs = [];
       for (let i = 0; i < ids.length; i += CHUNK) {
         const part = ids.slice(i, i + CHUNK);
@@ -246,9 +255,7 @@
     }
 
     async function loadData(campaignId) {
-      if (!db || typeof db.from !== 'function') {
-        throw new Error('Nie udało się utworzyć klienta Supabase. Upewnij się, że supabaseClient.js leży w tym samym folderze co wizualizacja.html (zakładka Network w DevTools nie powinna pokazywać dla niego 404) i że jest w wersji z window.supabaseClient.');
-      }
+      if (!db || typeof db.from !== 'function') throw new Error('Nie udało się połączyć z Supabase.');
 
       const { data: c, error: cErr } = await db.from('campaigns').select('*').eq('id', campaignId).maybeSingle();
       if (cErr) throw new Error('Tabela campaigns: ' + cErr.message);
@@ -281,7 +288,6 @@
     function prepareData() {
       sideById = new Map(dataCache.sides.map(s => [s.id, s]));
 
-      // Pozycje jednostek pogrupowane i posortowane raz
       positionsByUnit = new Map();
       dataCache.positions.forEach(p => {
         const t = new Date(p.recorded_at).getTime();
@@ -291,7 +297,6 @@
       });
       positionsByUnit.forEach(arr => arr.sort((a, b) => a.t - b.t));
 
-      // Zniszczenia (najwcześniejsze zdarzenie destroyed/eliminated)
       destroyedAt = new Map();
       dataCache.events.forEach(e => {
         if (e.event_type !== 'destroyed' && e.event_type !== 'eliminated') return;
@@ -300,17 +305,15 @@
         if (!destroyedAt.has(e.unit_id) || t < destroyedAt.get(e.unit_id)) destroyedAt.set(e.unit_id, t);
       });
 
-      // Klatki granic i bitew zapisane przez edytor w campaigns.map_config.borders_timeline
       let cfg = campaign.map_config;
       if (typeof cfg === 'string') { try { cfg = JSON.parse(cfg); } catch (e) { cfg = null; } }
       const timeline = (cfg && cfg.borders_timeline) || {};
+      
       borderFrames = Object.entries(timeline)
         .map(([ts, f]) => ({ t: Number(ts), features: Array.isArray(f) ? f : (f && f.features) || [] }))
         .filter(f => Number.isFinite(f.t))
         .sort((a, b) => a.t - b.t);
 
-      // Edytor zapisuje granice tylko w klatkach, w których się zmieniły. Klatce bez granic
-      // przypisujemy ostatnio znane granice z wcześniejszych klatek (tak samo jak robi to edytor).
       const isArea = f => f && f.geometry && f.geometry.type !== 'Point';
       let lastAreas = [], lastSrc = -1;
       borderFrames.forEach((fr, i) => {
@@ -331,7 +334,8 @@
       L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OSM' }).addTo(map);
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      areasLayer = L.layerGroup().addTo(map);
+      // SVG jest wymagane do płynnych przejść z transition: d w CSS
+      areasLayer = L.geoJSON(null).addTo(map);
       battlesLayer = L.layerGroup().addTo(map);
 
       const bounds = L.latLngBounds([]);
@@ -341,7 +345,7 @@
           bounds.extend([ft.geometry.coordinates[1], ft.geometry.coordinates[0]]);
         }
       }));
-      // Gdy nie ma pozycji ani bitew, dopasowujemy widok do pierwszych granic
+      
       if (!bounds.isValid()) {
         const fr = borderFrames.find(f => f.areas && f.areas.length);
         if (fr) {
@@ -376,15 +380,14 @@
       const slider = document.getElementById('timeline-slider');
       slider.min = startTimeMs;
       slider.max = endTimeMs;
-      slider.step = 60000; // 1 minuta – płynny ruch jednostek
+      slider.step = 60000; 
       slider.value = startTimeMs;
 
+      // Zmuszenie widoku to formatu zgodnego z TimeZone przeglądarki z włączonym rokiem
       document.getElementById('time-start').innerText = formatDateTime(startTimeMs);
       document.getElementById('time-end').innerText = formatDateTime(endTimeMs);
-      document.getElementById('header-badge').innerText =
-        `${allFrameTimes.length} klatek · ${dataCache.units.length} jednostek`;
+      document.getElementById('header-badge').innerText = `${allFrameTimes.length} klatek · ${dataCache.units.length} jednostek`;
 
-      // Znaczniki klatek na osi (jak w edytorze)
       const ticks = document.getElementById('timeline-ticks');
       const span = endTimeMs - startTimeMs;
       ticks.innerHTML = '';
@@ -393,8 +396,7 @@
         if (pct < 0 || pct > 100) return;
         const d = document.createElement('div');
         d.className = 'absolute top-0 w-[3px] h-2 bg-red-500/70 rounded';
-        d.style.left = pct + '%';
-        d.style.marginLeft = '-1px';
+        d.style.left = pct + '%'; d.style.marginLeft = '-1px';
         ticks.appendChild(d);
       });
 
@@ -449,16 +451,12 @@
       }, TICK_MS);
     }
 
-    // ---------- Pozycja jednostki w czasie ----------
-    // Pierwsza klatka (dowolna: granice albo pozycje jakiejkolwiek jednostki) późniejsza niż t.
-    // Służy do wykrycia, że jednostka skończyła istnienie na mapie.
     function firstFrameAfter(t) {
       let lo = 0, hi = allFrameTimes.length;
       while (lo < hi) { const mid = (lo + hi) >> 1; if (allFrameTimes[mid] > t) hi = mid; else lo = mid + 1; }
       return lo < allFrameTimes.length ? allFrameTimes[lo] : null;
     }
 
-    // Płynnie interpoluje pozycję między klatkami edytora.
     function getUnitState(unitId, timeMs, ignoreRemoval = false) {
       const arr = positionsByUnit.get(unitId);
       if (!arr || arr.length === 0) return null;
@@ -466,7 +464,6 @@
 
       const last = arr[arr.length - 1];
       if (timeMs >= last.t) {
-        // Po ostatniej pozycji jednostka znika od następnej klatki (jej "do kiedy")
         if (!ignoreRemoval) {
           const nf = firstFrameAfter(last.t);
           if (nf !== null && timeMs >= nf) return null;
@@ -487,11 +484,19 @@
       };
     }
 
-    // ---------- Granice i bitwy (klatki skokowe, jak w edytorze) ----------
-    function findBorderIdx(t) {
+    function findBorderIdxA(t) {
       let lo = 0, hi = borderFrames.length - 1, res = -1;
       while (lo <= hi) { const mid = (lo + hi) >> 1; if (borderFrames[mid].t <= t) { res = mid; lo = mid + 1; } else hi = mid - 1; }
       return res;
+    }
+    
+    function findBorderIdxB(t) {
+        // Znajduje klatkę następną, do której zmierza animacja granic
+        let res = borderFrames.length;
+        for(let i=0; i<borderFrames.length; i++) {
+            if(borderFrames[i].t > t) return i;
+        }
+        return res;
     }
 
     function sideColor(frakcjaId) {
@@ -503,46 +508,141 @@
       return { permanent: namesOn, sticky: !namesOn, direction: 'center', className: TOOLTIP_CLASS };
     }
 
-    // Styl obszaru – taki sam jak w edytorze (kolor strony konfliktu albo neutralny szary)
     function areaStyle(props) {
       const col = sideColor(props.frakcja) || props.color;
       if (!col) return { color: '#64748b', fillColor: '#334155', fillOpacity: 0.2, weight: 2 };
       return { color: col, fillColor: col, fillOpacity: 0.35, weight: 2 };
     }
 
-    // Rysuje granice państw / obszary zapisane w klatce
-    function drawAreas(features) {
-      areasLayer.clearLayers();
-      if (!features || !features.length) return;
-      try {
-        L.geoJSON({ type: 'FeatureCollection', features }, {
-          style: f => areaStyle(f.properties || {}),
-          onEachFeature: (f, layer) => {
-            const p = f.properties || {};
-            const name = p.name || p.NAME || p.SUBJECTO;
-            if (name) layer.bindTooltip(name, tooltipOpts());
-          }
-        }).addTo(areasLayer);
-      } catch (e) {
-        console.error('Błąd rysowania granic:', e);
-      }
+    // Płynne przesuwanie wierzchołków dla granic jeśli liczba punktów pasuje (Interpolacja Turf)
+    function interpolateFeatures(featA, featB, factor) {
+        if (!featA || !featB) return featA || featB;
+        if (featA.geometry.type !== featB.geometry.type) return featA; // Zbyt skomplikowana zmiana geometrii
+        
+        let coordsA = featA.geometry.coordinates;
+        let coordsB = featB.geometry.coordinates;
+        
+        // Funkcja głęboko interpolująca zagnieżdżone tablice (Poligony / MultiPoligony)
+        const deepInterpolate = (cA, cB) => {
+            if (typeof cA[0] === 'number') {
+                // Punkt [lng, lat]
+                return [
+                    cA[0] + (cB[0] - cA[0]) * factor,
+                    cA[1] + (cB[1] - cA[1]) * factor
+                ];
+            } else {
+                // Iterujemy tak głęboko jak pozwala na to tablica B
+                // Jeśli nowa granica ma więcej punktów, interpolacja urwie się w miejscu A
+                let newArr = [];
+                for (let i = 0; i < Math.min(cA.length, cB.length); i++) {
+                    newArr.push(deepInterpolate(cA[i], cB[i]));
+                }
+                return newArr;
+            }
+        };
+
+        const interpolatedGeometry = {
+            type: featA.geometry.type,
+            coordinates: deepInterpolate(coordsA, coordsB)
+        };
+
+        return {
+            type: "Feature",
+            properties: featA.properties,
+            geometry: interpolatedGeometry
+        };
     }
 
-    // Z klatek zapisanych w edytorze rysujemy granice (wielokąty) oraz znaczniki bitew
-    function renderBorders(idx) {
-      if (idx === currentBorderIdx) return;
-      currentBorderIdx = idx;
-      battlesLayer.clearLayers();
 
-      // Granice przerysowujemy tylko wtedy, gdy zmieniła się klatka, z której pochodzą
-      const src = idx >= 0 ? borderFrames[idx].areaSrc : -1;
-      if (src !== currentAreaSrc) {
-        currentAreaSrc = src;
-        drawAreas(idx >= 0 ? borderFrames[idx].areas : []);
+    // Główny Render Granic uwzględniający płynne przejścia czasowe
+    function renderBorders(timeMs) {
+      const idxA = findBorderIdxA(timeMs);
+      const idxB = findBorderIdxB(timeMs);
+      
+      let currentFeaturesToDraw = [];
+
+      if (idxA < 0) {
+          areasLayer.clearLayers();
+          activePolygonsMap.clear();
+          return;
       }
-      if (idx < 0) return;
 
-      borderFrames[idx].features.forEach(feature => {
+      const frameA = borderFrames[idxA];
+      
+      // Jeżeli znajdujemy się pomiędzy klatką A i B, interpolujemy
+      if (idxB < borderFrames.length && idxA !== idxB) {
+          const frameB = borderFrames[idxB];
+          
+          // Upewniamy się, że klatki zawierają granice (a nie tylko markery bitewne)
+          const srcA = frameA.areaSrc;
+          const srcB = frameB.areaSrc;
+          
+          if(srcA !== -1 && srcB !== -1 && srcA !== srcB) {
+              const fA = borderFrames[srcA].areas;
+              const fB = borderFrames[srcB].areas;
+              
+              // Factor płynności animacji 0.0 - 1.0
+              const tA = borderFrames[srcA].t;
+              const tB = borderFrames[srcB].t;
+              let factor = (timeMs - tA) / (tB - tA);
+              // Płynniejszy Easing (sine) zamiast linearnego
+              factor = -(Math.cos(Math.PI * factor) - 1) / 2;
+
+              // Próbujemy połączyć te same poligony po nazwach
+              fA.forEach(featA => {
+                  let featB = fB.find(f => (f.properties?.name || f.properties?.NAME) === (featA.properties?.name || featA.properties?.NAME));
+                  if(featB) {
+                      currentFeaturesToDraw.push(interpolateFeatures(featA, featB, factor));
+                  } else {
+                      currentFeaturesToDraw.push(featA);
+                  }
+              });
+          } else {
+              currentFeaturesToDraw = frameA.areas;
+          }
+      } else {
+          currentFeaturesToDraw = frameA.areas;
+      }
+
+      // Aktualizowanie istniejących warstw i dodawanie nowych w Locie
+      const currentNamesInFrame = new Set();
+
+      currentFeaturesToDraw.forEach(feat => {
+          const name = feat.properties?.name || feat.properties?.NAME || feat.properties?.SUBJECTO || 'unknown_' + Math.random();
+          currentNamesInFrame.add(name);
+          
+          if(activePolygonsMap.has(name)) {
+              // Aktualizacja Kształtu w Locie (Leaflet GeoJSON nie wspiera bezpośredniego update coordinates łatwo, więc nadpisujemy)
+              const existingLayer = activePolygonsMap.get(name);
+              // Ponieważ użyliśmy CSS `transition: d` na elemencie path, SVG Leafleta automatycznie zmorufje kształt
+              existingLayer.clearLayers();
+              existingLayer.addData(feat);
+          } else {
+              // Nowa granica pojawia się po raz pierwszy
+              const newGeoJsonLayer = L.geoJSON(feat, {
+                  style: f => areaStyle(f.properties || {}),
+                  onEachFeature: (f, layer) => {
+                      const p = f.properties || {};
+                      const tooltipName = p.name || p.NAME || p.SUBJECTO;
+                      if (tooltipName) layer.bindTooltip(tooltipName, tooltipOpts());
+                  }
+              });
+              activePolygonsMap.set(name, newGeoJsonLayer);
+              newGeoJsonLayer.addTo(areasLayer);
+          }
+      });
+
+      // Usuwamy państwa, których już nie ma na mapie (Zostały podbite/zniknęły)
+      for (const [name, layer] of activePolygonsMap.entries()) {
+          if (!currentNamesInFrame.has(name)) {
+              areasLayer.removeLayer(layer);
+              activePolygonsMap.delete(name);
+          }
+      }
+      
+      // Renderowanie BITEW
+      battlesLayer.clearLayers();
+      frameA.features.forEach(feature => {
         const props = feature.properties || {};
         if (!(feature.geometry && feature.geometry.type === 'Point' && props.iconType === 'battle')) return;
 
@@ -567,12 +667,21 @@
 
       const rebind = (layer, name) => { layer.unbindTooltip(); layer.bindTooltip(name, tooltipOpts()); };
       dataCache.units.forEach(u => { if (markers[u.id]) rebind(markers[u.id], u.name); });
-      currentBorderIdx = -2;      // wymusza ponowne narysowanie granic i bitew z nowymi podpisami
-      currentAreaSrc = -2;
+      
+      // Wymuszamy restart tooltipów dla granic
+      areasLayer.eachLayer(group => {
+          group.eachLayer(layer => {
+              const p = layer.feature?.properties || {};
+              const name = p.name || p.NAME || p.SUBJECTO;
+              if(name) {
+                  layer.unbindTooltip(); layer.bindTooltip(name, tooltipOpts());
+              }
+          })
+      });
+
       updateVisuals();
     }
 
-    // ---------- Jednostki ----------
     function unitIconType(unit) {
       return unit.symbol && unit.symbol !== 'none' ? unit.symbol : unit.unit_type;
     }
@@ -592,7 +701,7 @@
       const onFrame = allFrameTimes.includes(currentTimeMs);
       document.getElementById('frame-flag').classList.toggle('hidden', !onFrame);
 
-      renderBorders(findBorderIdx(currentTimeMs));
+      renderBorders(currentTimeMs);
 
       dataCache.units.forEach(unit => {
         const side = sideById.get(unit.side_id);
@@ -601,7 +710,6 @@
         const isDestroyed = destroyedT !== undefined && destroyedT <= currentTimeMs;
         const isExploding = isDestroyed && currentTimeMs <= destroyedT + EXPLOSION_MS;
 
-        // Zniszczona jednostka zostaje w miejscu zniszczenia
         const state = isDestroyed ? getUnitState(unit.id, destroyedT, true) : getUnitState(unit.id, currentTimeMs);
 
         if (!state) {
@@ -640,7 +748,7 @@
     function hidePanelOnMobile() { document.getElementById('side-panel').classList.add('-translate-x-full'); }
 
     function setPanel(html) {
-      if (html === lastPanelHtml) return; // nie przebudowujemy panelu, gdy nic się nie zmieniło
+      if (html === lastPanelHtml) return; 
       lastPanelHtml = html;
       document.getElementById('panel-content').innerHTML = html;
     }
@@ -676,7 +784,7 @@
       if (targetLine) { map.removeLayer(targetLine); targetLine = null; }
       selectedBattle = props;
       openPanel();
-      updateVisuals(); // zdejmuje podświetlenie jednostki
+      updateVisuals(); 
 
       const side = props.frakcja ? sideById.get(props.frakcja) : null;
       setPanel(`
@@ -693,7 +801,6 @@
       `);
     }
 
-    // Rozkazy obowiązujące w danym momencie (rozkaz bez valid_until trwa do wydania następnego)
     function getActiveOrders(unitId, t) {
       const list = dataCache.orders
         .filter(o => o.unit_id === unitId)
@@ -722,7 +829,6 @@
       const activeOrders = isDestroyed ? [] : getActiveOrders(selectedUnitId, currentTimeMs);
       const withTarget = [...activeOrders].reverse().find(o => o.target_latitude != null && o.target_longitude != null);
 
-      // Linia do celu rozkazu – aktualizowana w miejscu, bez kasowania co klatkę
       if (withTarget && pos) {
         const pts = [[pos.latitude, pos.longitude], [withTarget.target_latitude, withTarget.target_longitude]];
         if (targetLine) { targetLine.setLatLngs(pts); targetLine.setStyle({ color: sideCol }); }
@@ -750,7 +856,7 @@
         </div>
 
         <h2 class="text-2xl font-bold text-white mb-1 ${isDestroyed ? 'line-through text-slate-500' : ''}">${esc(unit.name)}</h2>
-        <p class="text-sm text-slate-400 mb-6">Typ: ${esc(unit.unit_type || 'Nieokreślony')} <span class="uppercase border border-slate-600 px-1 ml-2 text-[10px]">${esc(unit.symbol && unit.symbol !== 'none' ? unit.symbol : '')}</span></p>
+        <p class="text-sm text-slate-400 mb-6">Typ: <span class="uppercase border border-slate-600 px-1 ml-2 text-[10px]">${esc(unit.symbol && unit.symbol !== 'none' ? unit.symbol : '')}</span></p>
 
         ${isDestroyed ? `
           <div class="bg-red-900/20 border border-red-500/50 p-4 rounded mb-6 text-center">
@@ -760,14 +866,7 @@
           </div>
         ` : `
           <div class="grid grid-cols-2 gap-3 mt-4 text-sm mb-6">
-            <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
-              <span class="block text-slate-500 text-xs mb-1">Stan (Siła)</span>
-              <span class="font-bold text-white text-lg">${pos && pos.strength ? esc(pos.strength) : 'Brak'}</span>
-            </div>
-            <div class="bg-tactical-900 p-3 rounded-lg border border-tactical-700">
-              <span class="block text-slate-500 text-xs mb-1">Kierunek</span>
-              <span class="font-bold text-white text-lg">${pos && pos.heading ? esc(Math.round(pos.heading)) + '&deg;' : '-'}</span>
-            </div>
+
           </div>
         `}
 
@@ -785,10 +884,8 @@
       updateVisuals();
     }
 
-    // ---------- Pomocnicze ----------
-    // Czas wyświetlany w UTC – tak jak w edytorze, żeby godziny się zgadzały
     function formatDateTime(ms) {
-      return new Date(ms).toLocaleString('pl-PL', { timeZone: 'UTC', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return new Date(ms).toLocaleString('pl-PL', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
     }
 
     window.addEventListener('DOMContentLoaded', init);
