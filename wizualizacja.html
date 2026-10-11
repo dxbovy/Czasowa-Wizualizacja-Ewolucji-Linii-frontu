@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wizualizacja Taktyczna</title>
+  <title>CWEL(f) - Wizualizacja Taktyczna</title>
 
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%2310b981' d='M384 476.1L192 421.2l-148.2 49.4C19.7 478.7 0 460.6 0 435.5V107.5c0-18.7 12.8-35 30.9-39.5l161.1-40.3 192 54.9 148.2-49.4c24.1-8 43.8 10.1 43.8 35.2v328c0 18.7-12.8 35-30.9 39.5L384 476.1zm-96-368.6c-44.2 0-80 35.8-80 80c0 40.8 66.8 126.9 74.4 136.6c2.8 3.6 8.3 3.6 11.2 0c7.6-9.7 74.4-95.8 74.4-136.6c0-44.2-35.8-80-80-80zm0 112a32 32 0 1 1 0-64 32 32 0 1 1 0 64z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -150,6 +150,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Opcjonalny Turf.js jeśli potrzebny do interpolacji kształtów (użyjemy go do uproszczonego morfingu) -->
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://unpkg.com/leaflet-polylinedecorator/dist/leaflet.polylineDecorator.js"></script>
 
   <script>
     var SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
@@ -189,6 +190,12 @@
     let markers = {};
     let battlesLayer = null;
     let areasLayer = null; 
+    let arrowsLayer = null;        // strzałki narysowane w edytorze (z klatek)
+    let orderArrowsLayer = null;   // strzałki rozkazów (jednostka -> cel)
+    let orderArrows = new Map();   // unit_id -> { line, deco, key }
+    let ordersByUnit = new Map();
+    let lastArrowFrameIdx = -2;
+    let svgArrowRenderer = null;
     
     // Zmienne do kontroli interpolacji obszarów
     let activePolygonsMap = new Map(); // name -> leafletLayer
@@ -259,7 +266,7 @@
       if (!c) throw new Error('Nie znaleziono kampanii o podanym ID.');
       campaign = c;
       document.getElementById('battle-title').innerText = campaign.name;
-      document.title = campaign.name;
+      document.title = 'CWEL(f) - ' + campaign.name;
 
       const [sides, units] = await Promise.all([
         fetchAll('sides', q => q.eq('campaigns_id', campaignId)),
@@ -294,6 +301,12 @@
       });
       positionsByUnit.forEach(arr => arr.sort((a, b) => a.t - b.t));
 
+      ordersByUnit = new Map();
+      dataCache.orders.forEach(o => {
+        if (!ordersByUnit.has(o.unit_id)) ordersByUnit.set(o.unit_id, []);
+        ordersByUnit.get(o.unit_id).push(o);
+      });
+
       destroyedAt = new Map();
       dataCache.events.forEach(e => {
         if (e.event_type !== 'destroyed' && e.event_type !== 'eliminated') return;
@@ -321,7 +334,7 @@
         .filter(f => Number.isFinite(f.t))
         .sort((a, b) => a.t - b.t);
 
-      const isArea = f => f && f.geometry && f.geometry.type !== 'Point';
+      const isArea = f => f && f.geometry && (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon');
       let lastAreas = [], lastSrc = -1;
       borderFrames.forEach((fr, i) => {
         const own = fr.features.filter(isArea);
@@ -361,6 +374,8 @@
       // SVG jest wymagane do płynnych przejść z transition: d w CSS
       areasLayer = L.geoJSON(null).addTo(map);
       battlesLayer = L.layerGroup().addTo(map);
+      arrowsLayer = L.layerGroup().addTo(map);
+      orderArrowsLayer = L.layerGroup().addTo(map);
 
       const bounds = L.latLngBounds([]);
       dataCache.positions.forEach(p => bounds.extend([p.latitude, p.longitude]));
@@ -542,9 +557,76 @@
     }
 
 
+    // Strzałki natarcia narysowane w edytorze: ten sam wygląd (przerywana linia + grot) i ta sama zasada
+    // (obowiązuje ostatnia klatka <= bieżący czas, bez przenoszenia ze starszych klatek)
+    function makeArrow(latlngs, color, weight, pixel, group) {
+      // Bez wtyczki: jasna obwódka + kolorowa przerywana linia + grot jako znacznik SVG obrócony w stronę celu.
+      // Obwódka sprawia, że ciemne kolory frakcji są widoczne na ciemnej mapie.
+      const casing = L.polyline(latlngs, { color: '#ffffff', weight: weight + 3, opacity: 0.35, interactive: false }).addTo(group);
+      const line = L.polyline(latlngs, { color, weight, opacity: 1, dashArray: weight >= 4 ? '10, 10' : '5, 5', interactive: false }).addTo(group);
+      const html = `<div style="width:${pixel}px;height:${pixel}px;transform-origin:100% 50%;"><svg width="${pixel}" height="${pixel}" viewBox="0 0 20 20" style="display:block;overflow:visible"><polygon points="0,1 20,10 0,19" fill="${esc(color)}" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/></svg></div>`;
+      const head = L.marker(latlngs[latlngs.length - 1], {
+        icon: L.divIcon({ className: '', html, iconSize: [pixel, pixel], iconAnchor: [pixel, pixel / 2] }),
+        interactive: false, keyboard: false
+      }).addTo(group);
+      const a = { line, casing, head };
+      setArrowGeometry(a, latlngs);
+      return a;
+    }
+
+    function setArrowGeometry(a, pts) {
+      a.line.setLatLngs(pts); a.casing.setLatLngs(pts);
+      const n = pts.length;
+      a.head.setLatLng(pts[n - 1]);
+      const p1 = map.project(L.latLng(pts[n - 2]), 0), p2 = map.project(L.latLng(pts[n - 1]), 0);
+      const kat = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;   // projekcja Mercatora zachowuje kąty, więc nie zależy od zoomu
+      const el = a.head.getElement();
+      if (el && el.firstChild) el.firstChild.style.transform = `rotate(${kat}deg)`;
+    }
+
+    function removeArrow(a, group) { group.removeLayer(a.line); group.removeLayer(a.casing); group.removeLayer(a.head); }
+
+    function renderFrameArrows(idxA) {
+      if (idxA === lastArrowFrameIdx) return;
+      lastArrowFrameIdx = idxA;
+      arrowsLayer.clearLayers();
+      if (idxA < 0) return;
+      borderFrames[idxA].features.forEach(f => {
+        const p = f.properties || {};
+        if (!(f.geometry && f.geometry.type === 'LineString' && p.isArrow)) return;
+        const latlngs = f.geometry.coordinates.map(c => [c[1], c[0]]);
+        if (latlngs.length < 2) return;
+        const color = sideColor(p.frakcja) || p.color || '#10b981';
+        makeArrow(latlngs, color, 4, 18, arrowsLayer);
+      });
+    }
+
+    // Strzałki rozkazów: od bieżącej pozycji jednostki do celu aktywnego rozkazu
+    function updateOrderArrow(unit, state, color, show) {
+      const cur = orderArrows.get(unit.id);
+      let target = null;
+      if (show && state) {
+        const act = getActiveOrders(unit.id, currentTimeMs);
+        const o = [...act].reverse().find(x => x.target_latitude != null && x.target_longitude != null);
+        if (o) target = [o.target_latitude, o.target_longitude];
+      }
+      if (!target) {
+        if (cur) { removeArrow(cur, orderArrowsLayer); orderArrows.delete(unit.id); }
+        return;
+      }
+      const pts = [[state.latitude, state.longitude], target];
+      const key = color + '|' + target.join(',');
+      if (cur && cur.key === key) { setArrowGeometry(cur, pts); return; }
+      if (cur) removeArrow(cur, orderArrowsLayer);
+      const a = makeArrow(pts, color, 3, 16, orderArrowsLayer);
+      a.key = key;
+      orderArrows.set(unit.id, a);
+    }
+
     // Główny Render Granic (bez animacji interpolacji)
     function renderBorders(timeMs) {
       const idxA = findBorderIdxA(timeMs);
+      renderFrameArrows(idxA);
       
       if (idxA < 0) {
           battlesLayer.clearLayers();
@@ -668,6 +750,7 @@
         // Jednostka usunięta w edytorze (także zniszczona) nie jest już widoczna
         if (isRemoved(unit.id, currentTimeMs)) {
           if (markers[unit.id]) { map.removeLayer(markers[unit.id]); delete markers[unit.id]; }
+          updateOrderArrow(unit, null, color, false);
           return;
         }
         const destroyedT = destroyedAt.get(unit.id);
@@ -678,8 +761,10 @@
 
         if (!state) {
           if (markers[unit.id]) { map.removeLayer(markers[unit.id]); delete markers[unit.id]; }
+          updateOrderArrow(unit, null, color, false);
           return;
         }
+        updateOrderArrow(unit, state, color, !isDestroyed);
 
         const isSelected = selectedUnitId === unit.id;
         const key = `${color}|${isDestroyed}|${isExploding}|${isSelected}`;
@@ -766,8 +851,7 @@
     }
 
     function getActiveOrders(unitId, t) {
-      const list = dataCache.orders
-        .filter(o => o.unit_id === unitId)
+      const list = (ordersByUnit.get(unitId) || [])
         .map(o => ({
           o,
           from: new Date(o.valid_from || o.issued_at).getTime(),
@@ -792,13 +876,7 @@
       const pos = getUnitState(selectedUnitId, checkTime, isDestroyed);
 
       const activeOrders = isDestroyed ? [] : getActiveOrders(selectedUnitId, currentTimeMs);
-      const withTarget = [...activeOrders].reverse().find(o => o.target_latitude != null && o.target_longitude != null);
-
-      if (withTarget && pos) {
-        const pts = [[pos.latitude, pos.longitude], [withTarget.target_latitude, withTarget.target_longitude]];
-        if (targetLine) { targetLine.setLatLngs(pts); targetLine.setStyle({ color: sideCol }); }
-        else targetLine = L.polyline(pts, { color: sideCol, weight: 2, dashArray: '5, 10', opacity: 0.8, interactive: false }).addTo(map);
-      } else if (targetLine) { map.removeLayer(targetLine); targetLine = null; }
+      // strzałka celu rozkazu jest rysowana dla wszystkich jednostek w updateOrderArrow()
 
       const ordersHtml = activeOrders.length ? activeOrders.map(o => `
           <div class="bg-tactical-900 border border-l-4 border-tactical-700 rounded p-4 shadow-md mb-2" style="border-left-color:${esc(sideCol)}">
