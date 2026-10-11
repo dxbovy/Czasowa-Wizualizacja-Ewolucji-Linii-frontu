@@ -70,9 +70,6 @@
     .map-tooltip::before { display: none; }
 
     /* Płynna animacja dla wielokątów obszarów SVG na Leaflecie */
-    svg.leaflet-zoom-animated path {
-      transition: d 0.5s ease-out, fill 0.5s ease-out, stroke 0.5s ease-out;
-    }
 
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
@@ -102,6 +99,7 @@
     <!-- Panel boczny -->
     <aside id="side-panel" class="w-80 bg-tactical-950 border-r border-tactical-700 flex flex-col shrink-0 overflow-y-auto z-30 transition-transform transform -translate-x-full absolute h-full sm:relative sm:translate-x-0 shadow-2xl">
       <div id="panel-content" class="p-6"></div>
+      
     </aside>
 
     <!-- Mapa -->
@@ -149,17 +147,14 @@
 
   <!-- Skrypty -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- Klient Supabase -->
-  <script src="supabaseClient.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <!-- Opcjonalny Turf.js jeśli potrzebny do interpolacji kształtów (użyjemy go do uproszczonego morfingu) -->
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 
   <script>
-    // Klient Supabase tworzy supabaseClient.js (ustawia window.supabaseClient).
-    // Stałych SUPABASE_URL / SUPABASE_KEY NIE deklarujemy tu ponownie – są już zadeklarowane w supabaseClient.js
-    // (ponowna deklaracja const powodowała SyntaxError i skrypt w ogóle się nie uruchamiał).
-    const db = window.supabaseClient;
+    var SUPABASE_URL = 'https://pdshnuybcijmotizpgxy.supabase.co';
+    var SUPABASE_KEY = 'sb_publishable_Q8cmNNSUVGzlSoev2GK-Gg_CiKxQkth';
+    const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -530,15 +525,6 @@
       while (lo <= hi) { const mid = (lo + hi) >> 1; if (borderFrames[mid].t <= t) { res = mid; lo = mid + 1; } else hi = mid - 1; }
       return res;
     }
-    
-    function findBorderIdxB(t) {
-        // Znajduje klatkę następną, do której zmierza animacja granic
-        let res = borderFrames.length;
-        for(let i=0; i<borderFrames.length; i++) {
-            if(borderFrames[i].t > t) return i;
-        }
-        return res;
-    }
 
     function sideColor(frakcjaId) {
       const s = frakcjaId ? sideById.get(frakcjaId) : null;
@@ -555,53 +541,11 @@
       return { color: col, fillColor: col, fillOpacity: 0.35, weight: 2 };
     }
 
-    // Płynne przesuwanie wierzchołków dla granic jeśli liczba punktów pasuje (Interpolacja Turf)
-    function interpolateFeatures(featA, featB, factor) {
-        if (!featA || !featB) return featA || featB;
-        if (featA.geometry.type !== featB.geometry.type) return featA; // Zbyt skomplikowana zmiana geometrii
-        
-        let coordsA = featA.geometry.coordinates;
-        let coordsB = featB.geometry.coordinates;
-        
-        // Funkcja głęboko interpolująca zagnieżdżone tablice (Poligony / MultiPoligony)
-        const deepInterpolate = (cA, cB) => {
-            if (typeof cA[0] === 'number') {
-                // Punkt [lng, lat]
-                return [
-                    cA[0] + (cB[0] - cA[0]) * factor,
-                    cA[1] + (cB[1] - cA[1]) * factor
-                ];
-            } else {
-                // Iterujemy tak głęboko jak pozwala na to tablica B
-                // Jeśli nowa granica ma więcej punktów, interpolacja urwie się w miejscu A
-                let newArr = [];
-                for (let i = 0; i < Math.min(cA.length, cB.length); i++) {
-                    newArr.push(deepInterpolate(cA[i], cB[i]));
-                }
-                return newArr;
-            }
-        };
 
-        const interpolatedGeometry = {
-            type: featA.geometry.type,
-            coordinates: deepInterpolate(coordsA, coordsB)
-        };
-
-        return {
-            type: "Feature",
-            properties: featA.properties,
-            geometry: interpolatedGeometry
-        };
-    }
-
-
-    // Główny Render Granic uwzględniający płynne przejścia czasowe
+    // Główny Render Granic (bez animacji interpolacji)
     function renderBorders(timeMs) {
       const idxA = findBorderIdxA(timeMs);
-      const idxB = findBorderIdxB(timeMs);
       
-      let currentFeaturesToDraw = [];
-
       if (idxA < 0) {
           battlesLayer.clearLayers();
           areasLayer.clearLayers();
@@ -610,43 +554,9 @@
       }
 
       const frameA = borderFrames[idxA];
-      
-      // Jeżeli znajdujemy się pomiędzy klatką A i B, interpolujemy
-      if (idxB < borderFrames.length && idxA !== idxB) {
-          const frameB = borderFrames[idxB];
-          
-          // Upewniamy się, że klatki zawierają granice (a nie tylko markery bitewne)
-          const srcA = frameA.areaSrc;
-          const srcB = frameB.areaSrc;
-          
-          if(srcA !== -1 && srcB !== -1 && srcA !== srcB) {
-              const fA = borderFrames[srcA].areas;
-              const fB = borderFrames[srcB].areas;
-              
-              // Factor płynności animacji 0.0 - 1.0
-              const tA = borderFrames[srcA].t;
-              const tB = borderFrames[srcB].t;
-              let factor = (timeMs - tA) / (tB - tA);
-              // Płynniejszy Easing (sine) zamiast linearnego
-              factor = -(Math.cos(Math.PI * factor) - 1) / 2;
+      const currentFeaturesToDraw = frameA.areas || [];
 
-              // Próbujemy połączyć te same poligony po nazwach
-              fA.forEach(featA => {
-                  let featB = fB.find(f => (f.properties?.name || f.properties?.NAME) === (featA.properties?.name || featA.properties?.NAME));
-                  if(featB) {
-                      currentFeaturesToDraw.push(interpolateFeatures(featA, featB, factor));
-                  } else {
-                      currentFeaturesToDraw.push(featA);
-                  }
-              });
-          } else {
-              currentFeaturesToDraw = frameA.areas;
-          }
-      } else {
-          currentFeaturesToDraw = frameA.areas;
-      }
-
-      // Aktualizowanie istniejących warstw i dodawanie nowych w Locie
+      // Aktualizowanie istniejących warstw i dodawanie nowych
       const currentNamesInFrame = new Set();
 
       currentFeaturesToDraw.forEach(feat => {
@@ -654,9 +564,8 @@
           currentNamesInFrame.add(name);
           
           if(activePolygonsMap.has(name)) {
-              // Aktualizacja Kształtu w Locie (Leaflet GeoJSON nie wspiera bezpośredniego update coordinates łatwo, więc nadpisujemy)
+              // Aktualizacja Kształtu (skokowa)
               const existingLayer = activePolygonsMap.get(name);
-              // Ponieważ użyliśmy CSS `transition: d` na elemencie path, SVG Leafleta automatycznie zmorufje kształt
               existingLayer.clearLayers();
               existingLayer.addData(feat);
           } else {
@@ -682,23 +591,27 @@
           }
       }
       
-      // Renderowanie BITEW: w klatce, w której są zapisane, oraz w czasie trwania liczonym od pierwszej klatki
+      // Renderowanie BITEW: w klatce, w której są zapisane, oraz w czasie trwania
       battlesLayer.clearLayers();
       const jestBitwa = f => f.geometry && f.geometry.type === 'Point' && f.properties && f.properties.iconType === 'battle';
+      
       battleSpans.forEach(sp => {
         let feature = frameA.features.find(f => jestBitwa(f) && (f.properties.name || JSON.stringify(f.geometry.coordinates)) === sp.key);
         if (!feature && timeMs >= sp.start && timeMs < sp.end) {
           sp.versions.forEach(v => { if (v.t <= timeMs) feature = v.ft; });
         }
         if (!feature) return;
+        
         const props = feature.properties || {};
         const name = props.name || props.NAME || props.SUBJECTO;
         const color = sideColor(props.frakcja) || '#ef4444';
         const [lng, lat] = feature.geometry.coordinates;
+        
         const icon = L.divIcon({
           className: '', iconSize: [50, 50], iconAnchor: [25, 25],
           html: `<div class="battle-badge" style="border-color:${esc(color)};box-shadow:0 0 20px ${esc(color)}, inset 0 0 10px rgba(0,0,0,0.5)"><i class="${ICONS.battle}"></i></div>`
         });
+        
         const m = L.marker([lat, lng], { icon, zIndexOffset: 500 }).addTo(battlesLayer);
         if (name) m.bindTooltip(name, tooltipOpts());
         m.on('click', () => selectBattle(props, [lat, lng]));

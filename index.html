@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CWEL(f)</title>
+    <title>Czasowa Wizualizacja Ewolucji Linii (frontu)</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 576 512'%3E%3Cpath fill='%2310b981' d='M384 476.1L192 421.2l-148.2 49.4C19.7 478.7 0 460.6 0 435.5V107.5c0-18.7 12.8-35 30.9-39.5l161.1-40.3 192 54.9 148.2-49.4c24.1-8 43.8 10.1 43.8 35.2v328c0 18.7-12.8 35-30.9 39.5L384 476.1zm-96-368.6c-44.2 0-80 35.8-80 80c0 40.8 66.8 126.9 74.4 136.6c2.8 3.6 8.3 3.6 11.2 0c7.6-9.7 74.4-95.8 74.4-136.6c0-44.2-35.8-80-80-80zm0 112a32 32 0 1 1 0-64 32 32 0 1 1 0 64z'/%3E%3C/svg%3E">
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -36,7 +36,6 @@ tailwind.config = {
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
         <div class="flex items-center gap-3">
           <i class="fa-solid fa-map-location-dot text-tactical-accent text-2xl"></i>
-          <span class="font-bold text-xl text-white tracking-wider">CWEL<span class="text-tactical-accent text-sm">(f)</span></span>
         </div>
         <div class="hidden md:flex gap-6">
           <a href="#problem" class="hover:text-tactical-accent transition-colors">Problem i Rozwiązanie</a>
@@ -88,7 +87,7 @@ tailwind.config = {
             Tradycyjne mapy historyczne, które znamy z podręczników, są <strong>statyczne i często nieczytelne</strong>. Gąszcz nakładających się na siebie strzałek, dat i skomplikowanych symboli sprawia, że pełne zrozumienie przebiegu bitwy jest zarezerwowane wyłącznie dla prawdziwych pasjonatów i ekspertów.
           </p>
           <p>
-            Stworzyliśmy <strong>CWEL(f)</strong>, aby udostępnić tę wiedzę laikom, uczniom i nauczycielom. Nasza aplikacja pozwala na odtworzenie starcia chronologicznie, minuta po minucie. Zamiast domyślać się kolejności zdarzeń, wystarczy przesunąć suwak na osi czasu.
+            Stworzyliśmy naszą aplikację, aby udostępnić tę wiedzę laikom, uczniom i nauczycielom. Nasza aplikacja pozwala na odtworzenie starcia chronologicznie, minuta po minucie. Zamiast domyślać się kolejności zdarzeń, wystarczy przesunąć suwak na osi czasu.
           </p>
           <div class="bg-tactical-900 border-l-4 border-tactical-accent p-6 rounded-r-lg mt-8">
             <h3 class="text-white font-bold mb-2"><i class="fa-solid fa-school mr-2 text-tactical-accent"></i>Idealne dla edukacji</h3>
@@ -98,21 +97,29 @@ tailwind.config = {
       </div>
     </section>
 
-    <!-- Technologie -->
+<!-- Technologie -->
     <section id="tech" class="py-20">
       <div class="max-w-7xl mx-auto px-4 text-center">
-        <h2 class="text-3xl font-bold text-white mb-10">Stos technologiczny (WIP)</h2>
+        <h2 class="text-3xl font-bold text-white mb-10">Stos technologiczny</h2>
         <div class="flex flex-wrap justify-center gap-8">
-          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40">
-            <i class="fa-brands fa-node-js text-5xl text-green-500"></i>
-            <span class="font-bold">Node.js</span>
+          <!-- JavaScript -->
+          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40 hover:border-tactical-accent transition-colors">
+            <i class="fa-brands fa-js text-5xl text-yellow-400"></i>
+            <span class="font-bold">JavaScript</span>
           </div>
-          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40">
+          <!-- Leaflet & Turf.js -->
+          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40 hover:border-tactical-accent transition-colors">
+            <i class="fa-solid fa-map-location-dot text-5xl text-blue-400"></i>
+            <span class="font-bold">Leaflet i Turf.js</span>
+          </div>
+          <!-- Supabase -->
+          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40 hover:border-tactical-accent transition-colors">
             <i class="fa-solid fa-database text-5xl text-emerald-500"></i>
             <span class="font-bold">Supabase</span>
           </div>
-          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40">
-            <i class="fa-brands fa-css3-alt text-5xl text-blue-400"></i>
+          <!-- Tailwind CSS -->
+          <div class="flex flex-col items-center gap-3 p-6 bg-tactical-800 rounded-xl border border-tactical-700 w-40 hover:border-tactical-accent transition-colors">
+            <i class="fa-brands fa-css3-alt text-5xl text-sky-400"></i>
             <span class="font-bold">Tailwind CSS</span>
           </div>
         </div>
@@ -177,4 +184,3 @@ tailwind.config = {
     </footer>
   </body>
 </html>
->>>>>>> b1646663c81fef9c51bcea3c9795b0dbd98714a5
