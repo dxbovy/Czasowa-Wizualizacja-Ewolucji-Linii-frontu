@@ -805,6 +805,8 @@
                   const res = prompt("Zmień wynik bitwy:", props.result || "");
                   layer.feature.properties.description = desc || "";
                   layer.feature.properties.result = res || "";
+                  const godz = parseFloat(String(prompt("Czas trwania bitwy w godzinach:", props.czasTrwania || 24) || '').replace(',', '.'));
+                  layer.feature.properties.czasTrwania = godz > 0 ? godz : (props.czasTrwania || 24);
                   
                   layer.unbindTooltip();
                   layer.bindTooltip(nowaNazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
@@ -1046,6 +1048,8 @@
               const res = prompt("Podaj wynik bitwy (np. Zwycięstwo osi, Odwrót):");
               oczekujacyMarker.feature.properties.description = desc || "";
               oczekujacyMarker.feature.properties.result = res || "";
+              const godz = parseFloat(String(prompt("Czas trwania bitwy w godzinach (bitwa będzie widoczna na kolejnych klatkach):", "24") || '').replace(',', '.'));
+              oczekujacyMarker.feature.properties.czasTrwania = godz > 0 ? godz : 24;
           }
 
           oczekujacyMarker.bindTooltip(nazwa, { permanent: nazwyPermanentne, sticky: !nazwyPermanentne, direction: 'center', className: "text-white font-bold text-[10px] uppercase tracking-wider bg-tactical-900/80 border border-tactical-500 px-2 py-1 rounded shadow-lg pointer-events-none" });
@@ -1215,6 +1219,57 @@
       return ile;
     }
 
+    // ---- BITWY: widoczne przez czasTrwania (godziny, domyślnie 24) od pierwszej klatki, w której występują ----
+    const jestBitwa = f => f.geometry && f.geometry.type === 'Point' && f.properties && f.properties.iconType === 'battle';
+    const kluczBitwy = f => f.properties.name || JSON.stringify(f.geometry.coordinates);
+    const czasBitwyMs = f => (Number(f.properties.czasTrwania) > 0 ? Number(f.properties.czasTrwania) : 24) * GODZINA;
+
+    // Przelicza kopie bitwy (oznaczone przeniesiona:true) we wszystkich klatkach zrodlo; jawne wersje zostają
+    function przeliczKopieBitwy(klucz, zrodlo = klatki) {
+      const czasy = Object.keys(zrodlo).map(Number).filter(Number.isFinite).sort((a, b) => a - b);
+      let start = null, cur = null;
+      for (const t of czasy) {
+        const fr = zrodlo[t]; if (!fr || !Array.isArray(fr.features)) continue;
+        const same = x => jestBitwa(x) && kluczBitwy(x) === klucz;
+        fr.features = fr.features.filter(x => !(same(x) && x.properties.przeniesiona));
+        const jawna = fr.features.find(same);
+        if (jawna) { if (start === null) start = t; cur = jawna; continue; }
+        if (cur && t < start + czasBitwyMs(cur)) { const k = lekkaKopia(cur); k.properties.przeniesiona = true; fr.features.push(k); }
+      }
+    }
+
+    function zastosujZmianyBitew(przed, po) {
+      const mapa = feats => { const m = new Map(); feats.filter(jestBitwa).forEach(f => m.set(kluczBitwy(f), f)); return m; };
+      const A = mapa(przed), B = mapa(po);
+      const geo = f => JSON.stringify(f.geometry.coordinates);
+      const doPrzeliczenia = new Set();
+
+      for (const [k, fNew] of B) {                     // zmiana współrzędnych/opisu/czasu: wersja staje się jawna w tej klatce
+        const fOld = A.get(k);
+        if (!fOld) { doPrzeliczenia.add(k); continue; }
+        if (geo(fOld) !== geo(fNew) || JSON.stringify(fOld.properties) !== JSON.stringify(fNew.properties)) {
+          const i = po.indexOf(fNew); const { przeniesiona, ...reszta } = fNew.properties;
+          if (i >= 0) po[i] = { ...fNew, properties: reszta };
+          doPrzeliczenia.add(k);
+        }
+      }
+      for (const [k, fOld] of A) {                     // usunięcie bitwy w tej klatce kończy ją w tym momencie
+        if (B.has(k)) continue;
+        const nowaNazwa = [...B.values()].some(b => geo(b) === geo(fOld));   // zmiana nazwy (ta sama pozycja)
+        if (nowaNazwa) { doPrzeliczenia.add(k); continue; }
+        const czasy = Object.keys(klatki).map(Number).filter(t => t < czasTeraz).sort((a, b) => a - b);
+        let start = null, tJawnej = null;
+        for (const t of czasy) { const f = klatki[t].features.find(x => jestBitwa(x) && kluczBitwy(x) === k && !x.properties.przeniesiona); if (f) { if (start === null) start = t; tJawnej = t; } }
+        if (tJawnej !== null) {
+          const fr = klatki[tJawnej]; const i = fr.features.findIndex(x => jestBitwa(x) && kluczBitwy(x) === k && !x.properties.przeniesiona);
+          const godz = Math.max((czasTeraz - start) / GODZINA, 0.01);
+          fr.features[i] = { ...fr.features[i], properties: { ...fr.features[i].properties, czasTrwania: godz } };
+        }
+        doPrzeliczenia.add(k);
+      }
+      doPrzeliczenia.forEach(k => przeliczKopieBitwy(k));
+    }
+
     function zapiszKlatke(stan) {
       const klucz = najblizszaKlatka(czasTeraz);
       const dokladna = klucz === czasTeraz;
@@ -1223,6 +1278,7 @@
       if (dokladna || !taSama) {
         const przed = poprzednia.features;
         klatki[czasTeraz] = stan;
+        zastosujZmianyBitew(przed, stan.features);                    // bitwy trwają przez czasTrwania (kolejne klatki)
         const ileJ = zastosujZmianyJednostek(przed, stan.features);   // usunięcie / dodanie / przesunięcie jednostki w kolejnych klatkach
         if (ileJ > 0) pokazKomunikat('Zmianę jednostek zastosowano także w ' + ileJ + ' kolejnych klatkach.');
         const ile = propagujGranice(przed, stan.features);      // granice/obszary: zmiana obowiązuje w kolejnych klatkach
@@ -1341,12 +1397,20 @@
         const ob = feats.filter(jestObszar); if (ob.length) ostObszary = ob;
         feats.filter(jestJednostka).forEach(f => { if (!f.properties.przeniesiona) ostPoz.set(f.properties.name, { f, t }); });
       }
+      const kluczeBitew = new Set();
+      for (const t of czasy) { const fr = obj[t]; if (fr && Array.isArray(fr.features)) fr.features.filter(jestBitwa).forEach(f => kluczeBitew.add(kluczBitwy(f))); }
+      kluczeBitew.forEach(k => przeliczKopieBitwy(k, obj));
       return obj;
+    }
+
+    // JSON z wcięciami; tablice samych liczb (współrzędne) zostają w jednej linii, żeby plik był czytelny, a nie rozdęty
+    function ladnyJson(obj) {
+      return JSON.stringify(obj, null, 2).replace(/\[\s+(-?\d[^\[\]{}"]*?)\s+\]/g, (m, w) => '[' + w.replace(/\s*\n\s*/g, ' ') + ']');
     }
 
     // 9. Import / Export Local
     document.getElementById('export-btn').addEventListener('click', () => {
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ format: "kampania-v2", frakcje, klatki, rozkazy: lokalneRozkazy }));
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(ladnyJson({ format: "kampania-v2", frakcje, klatki, rozkazy: lokalneRozkazy }));
       const a = document.createElement('a'); a.href = dataStr; a.download = `kampania_${BATTLE_ID}.json`; document.body.appendChild(a); a.click(); a.remove();
     });
     
@@ -1444,7 +1508,7 @@
       for (const ts of czasy) {
         const feats = (klatki[ts] && klatki[ts].features) || [];
         const obszary = feats.filter(jestPoligonem);
-        const bitwy = feats.filter(f => f.geometry && f.geometry.type === 'Point' && f.properties && f.properties.iconType === 'battle' && f.properties.name);
+        const bitwy = feats.filter(f => f.geometry && f.geometry.type === 'Point' && f.properties && f.properties.iconType === 'battle' && f.properties.name && !f.properties.przeniesiona);
         const lista = [];
         if (!ostatnie || !takieSameObszary(ostatnie, obszary)) {
           obszary.forEach(f => lista.push(odchudzObszar(f)));
@@ -1613,6 +1677,7 @@
                   if (typ === 'Point' && props.name) {
                       
                       if (props.iconType === 'battle') {
+                          if (props.przeniesiona) continue;   // kopia z przeliczenia czasu trwania – nie zapisujemy
                           sameGranice.push(feature); 
 
                           if (!battlesMap.has(props.name)) {
@@ -1627,7 +1692,8 @@
                                   result: props.result || '',
                                   latitude: feature.geometry.coordinates[1],
                                   longitude: feature.geometry.coordinates[0],
-                                  start_date: recordedAt 
+                                  start_date: recordedAt,
+                                  end_date: new Date(new Date(recordedAt).getTime() + (Number(props.czasTrwania) > 0 ? Number(props.czasTrwania) : 24) * 3600000).toISOString()
                               };
 
                               if (existingBattle && existingBattle.id) {
@@ -1686,7 +1752,7 @@
           }
           if (zdarzeniaUsuniec.length > 0) {
               const { error: evErr } = await db.from('unit_events').insert(zdarzeniaUsuniec);
-              if (evErr) throw new Error("Błąd zapisu usunięć jednostek (unit_events, event_type 'removed'): " + evErr.message + " – jeśli w bazie jest ograniczenie CHECK na event_type, dodaj do niego wartość 'removed'.");
+              if (evErr) throw new Error("Błąd zapisu usunięć jednostek (unit_events, event_type 'removed'): " + evErr.message + (/row-level security/i.test(evErr.message) ? " – tabela unit_events nie ma polityki RLS pozwalającej na zapis (INSERT/DELETE/SELECT) dla klucza publicznego. Dodaj ją w Supabase (SQL Editor). Pozycje jednostek zostały już zapisane." : " – jeśli w bazie jest ograniczenie CHECK na event_type, dodaj do niego wartość 'removed'."));
           }
 
           if (lokalneRozkazy.length > 0) {

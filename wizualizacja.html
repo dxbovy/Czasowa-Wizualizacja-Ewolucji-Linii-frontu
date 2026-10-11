@@ -188,6 +188,7 @@
     let removedAt = new Map(); // unit_id -> posortowane czasy zdarzeń 'removed' (jednostka usunięta w edytorze)
     let borderFrames = []; 
     let allFrameTimes = []; 
+    let battleSpans = []; // bitwy z czasem trwania: { key, start, end, versions:[{t, ft}] }
 
     let map = null;
     let markers = {};
@@ -332,6 +333,23 @@
         if (own.length) { lastAreas = own; lastSrc = i; }
         fr.areas = lastAreas;
         fr.areaSrc = lastSrc;
+      });
+
+      // Bitwy: widoczne od pierwszej klatki, w której występują, przez czas trwania (właściwość czasTrwania w godzinach,
+      // domyślnie 24 h) – a nie tylko w klatce, w której je postawiono.
+      battleSpans = [];
+      const seenBattles = new Map();
+      borderFrames.forEach(fr => fr.features.forEach(ft => {
+        const p = ft.properties || {};
+        if (!(ft.geometry && ft.geometry.type === 'Point' && p.iconType === 'battle')) return;
+        const key = p.name || JSON.stringify(ft.geometry.coordinates);
+        let sp = seenBattles.get(key);
+        if (!sp) { sp = { key, start: fr.t, versions: [] }; seenBattles.set(key, sp); battleSpans.push(sp); }
+        sp.versions.push({ t: fr.t, ft });
+      }));
+      battleSpans.forEach(sp => {
+        const hrs = Number(sp.versions[sp.versions.length - 1].ft.properties.czasTrwania);
+        sp.end = sp.start + (hrs > 0 ? hrs : 24) * GODZINA;
       });
 
       const times = new Set(borderFrames.map(f => f.t));
@@ -585,6 +603,7 @@
       let currentFeaturesToDraw = [];
 
       if (idxA < 0) {
+          battlesLayer.clearLayers();
           areasLayer.clearLayers();
           activePolygonsMap.clear();
           return;
@@ -663,12 +682,16 @@
           }
       }
       
-      // Renderowanie BITEW
+      // Renderowanie BITEW: w klatce, w której są zapisane, oraz w czasie trwania liczonym od pierwszej klatki
       battlesLayer.clearLayers();
-      frameA.features.forEach(feature => {
+      const jestBitwa = f => f.geometry && f.geometry.type === 'Point' && f.properties && f.properties.iconType === 'battle';
+      battleSpans.forEach(sp => {
+        let feature = frameA.features.find(f => jestBitwa(f) && (f.properties.name || JSON.stringify(f.geometry.coordinates)) === sp.key);
+        if (!feature && timeMs >= sp.start && timeMs < sp.end) {
+          sp.versions.forEach(v => { if (v.t <= timeMs) feature = v.ft; });
+        }
+        if (!feature) return;
         const props = feature.properties || {};
-        if (!(feature.geometry && feature.geometry.type === 'Point' && props.iconType === 'battle')) return;
-
         const name = props.name || props.NAME || props.SUBJECTO;
         const color = sideColor(props.frakcja) || '#ef4444';
         const [lng, lat] = feature.geometry.coordinates;
